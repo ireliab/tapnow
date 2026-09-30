@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { resolveInputs, upstreamOf } from '../graph'
 import { Icon } from '../icons'
 import { useStore } from '../store'
-import type { CanvasNodeData, NodeParams } from '../types'
+import type { CanvasNodeData, NodeKind, NodeParams } from '../types'
 
 const PROVIDER_LABEL: Record<string, string> = { mock: 'Offline (mock)', llm: 'Local LLM', comfyui: 'ComfyUI (local)', openai: 'OpenAI', fal: 'fal.ai' }
 const VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']
@@ -26,11 +26,15 @@ export function Composer({ id, data, zoom }: { id: string; data: CanvasNodeData;
   const upstream = useMemo(() => upstreamOf(id, nodes, edges), [id, nodes, edges])
   const ta = useRef<HTMLTextAreaElement>(null)
   const [mention, setMention] = useState<{ q: string; at: number } | null>(null)
-  const candidates = mention ? upstream.filter(n => n.data.title.toLowerCase().includes(mention.q.toLowerCase())) : []
+  const elements = useStore(s => s.elements)
+  const candidates = mention ? [
+    ...upstream.map(n => ({ id: n.id, title: n.data.title, icon: n.data.kind as string })),
+    ...elements.map(e => ({ id: e.id, title: e.name, icon: 'element' })),
+  ].filter(c => c.title.toLowerCase().includes(mention.q.toLowerCase())) : []
   const onPrompt = (v: string, caret: number) => {
     updateData(id, { prompt: v })
     const m = v.slice(0, caret).match(/(^|\s)@([^\s@]*)$/)
-    setMention(m && upstream.length ? { q: m[2], at: caret - m[2].length - 1 } : null)
+    setMention(m && (upstream.length || elements.length) ? { q: m[2], at: caret - m[2].length - 1 } : null)
   }
   const pick = (title: string) => {
     if (!mention) return
@@ -61,12 +65,12 @@ export function Composer({ id, data, zoom }: { id: string; data: CanvasNodeData;
       {data.kind !== 'text' && (
         <div className="composer-prompt">
           <textarea ref={ta} autoFocus value={data.prompt} rows={3}
-            placeholder={(data.kind === 'video' ? 'Describe the motion, camera and action…' : data.kind === 'audio' ? 'Text to speak…' : 'Describe the image…') + (upstream.length ? '  Type @ to reference an input' : '')}
+            placeholder={(data.kind === 'video' ? 'Describe the motion, camera and action…' : data.kind === 'audio' ? 'Text to speak…' : 'Describe the image…') + (upstream.length || elements.length ? '  Type @ to reference an input or element' : '')}
             onChange={e => onPrompt(e.target.value, e.target.selectionStart)}
-            onKeyDown={e => { if (mention && candidates[0] && (e.key === 'Enter' || e.key === 'Tab') && !e.ctrlKey) { e.preventDefault(); pick(candidates[0].data.title) } if (e.key === 'Escape') setMention(null) }} />
+            onKeyDown={e => { if (mention && candidates[0] && (e.key === 'Enter' || e.key === 'Tab') && !e.ctrlKey) { e.preventDefault(); pick(candidates[0].title) } if (e.key === 'Escape') setMention(null) }} />
           {mention && candidates.length > 0 && (
             <div className="mention-pop down">
-              {candidates.map(n => <button key={n.id} onMouseDown={e => { e.preventDefault(); pick(n.data.title) }}><Icon name={n.data.kind} size={12} /> {n.data.title}</button>)}
+              {candidates.map(c => <button key={c.id} onMouseDown={e => { e.preventDefault(); pick(c.title) }}>{c.icon === 'element' ? <span className="chip skill">element</span> : <Icon name={c.icon as NodeKind} size={12} />} {c.title}</button>)}
             </div>
           )}
         </div>

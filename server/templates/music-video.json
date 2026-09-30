@@ -1,0 +1,20 @@
+{
+  "id": "music-video",
+  "name": "Music video",
+  "description": "Generate a music bed, then three visual moods that animate into clips — assemble them in a playlist.",
+  "category": "Music",
+  "nodes": [
+    { "ref": "song", "kind": "audio", "title": "Music bed", "prompt": "dreamy synthwave, 100 bpm, warm pads, driving bassline", "params": { "audioMode": "music", "duration": 20 }, "x": 0, "y": 0 },
+    { "ref": "look", "kind": "text", "title": "Visual language", "prompt": "Retro-futurist night drive, neon magenta and cyan, VHS grain, lens bloom", "x": 0, "y": 360 },
+    { "ref": "m1", "kind": "image", "title": "Mood 1", "prompt": "Empty highway through a desert at night under a huge moon", "params": { "aspect": "16:9" }, "x": 420, "y": 0 },
+    { "ref": "m2", "kind": "image", "title": "Mood 2", "prompt": "Driver silhouette lit by dashboard neon", "params": { "aspect": "16:9" }, "x": 420, "y": 320 },
+    { "ref": "m3", "kind": "image", "title": "Mood 3", "prompt": "City skyline glowing on the horizon", "params": { "aspect": "16:9" }, "x": 420, "y": 640 },
+    { "ref": "c1", "kind": "video", "title": "Clip 1", "prompt": "fast tracking shot along the road", "params": { "aspect": "16:9", "duration": 5 }, "x": 840, "y": 0 },
+    { "ref": "c2", "kind": "video", "title": "Clip 2", "prompt": "slow push-in, lights sweeping across the face", "params": { "aspect": "16:9", "duration": 5 }, "x": 840, "y": 320 },
+    { "ref": "c3", "kind": "video", "title": "Clip 3", "prompt": "aerial drone rise toward the skyline", "params": { "aspect": "16:9", "duration": 5 }, "x": 840, "y": 640 }
+  ],
+  "edges": [
+    { "from": "look", "to": "m1" }, { "from": "look", "to": "m2" }, { "from": "look", "to": "m3" },
+    { "from": "m1", "to": "c1" }, { "from": "m2", "to": "c2" }, { "from": "m3", "to": "c3" }
+  ]
+}

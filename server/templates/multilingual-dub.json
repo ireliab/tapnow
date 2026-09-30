@@ -1,0 +1,15 @@
+{
+  "id": "multilingual-dub",
+  "name": "Multilingual voice-over",
+  "description": "One script, three languages, three narration tracks. Replace the translations or ask the Agent to translate.",
+  "category": "Audio",
+  "nodes": [
+    { "ref": "en", "kind": "text", "title": "VO — English", "prompt": "Every great journey starts with a single step. Take yours today.", "x": 0, "y": 0 },
+    { "ref": "es", "kind": "text", "title": "VO — Spanish", "prompt": "Todo gran viaje comienza con un solo paso. Da el tuyo hoy.", "x": 0, "y": 260 },
+    { "ref": "ja", "kind": "text", "title": "VO — Japanese", "prompt": "すべての偉大な旅は一歩から始まる。今日、その一歩を踏み出そう。", "x": 0, "y": 520 },
+    { "ref": "aen", "kind": "audio", "title": "Narration — EN", "prompt": "", "params": { "audioMode": "speech" }, "x": 420, "y": 0 },
+    { "ref": "aes", "kind": "audio", "title": "Narration — ES", "prompt": "", "params": { "audioMode": "speech" }, "x": 420, "y": 260 },
+    { "ref": "aja", "kind": "audio", "title": "Narration — JA", "prompt": "", "params": { "audioMode": "speech" }, "x": 420, "y": 520 }
+  ],
+  "edges": [{ "from": "en", "to": "aen" }, { "from": "es", "to": "aes" }, { "from": "ja", "to": "aja" }]
+}

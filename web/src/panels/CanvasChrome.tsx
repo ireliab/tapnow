@@ -5,6 +5,7 @@ import { useAgent } from '../agent/agentStore'
 import { createGroup, createPlaylist, downloadZip, focusNode, PIN_COLORS, setPin, stackNodes } from '../canvasOps'
 import { Icon, type IconName } from '../icons'
 import { KIND_LABEL, useStore } from '../store'
+import { SaveTemplateDialog } from './LibraryPanel'
 import type { NodeKind } from '../types'
 
 /** Floating toolbar over a multi-selection (TapNow's batch action toolbar). */
@@ -12,8 +13,10 @@ export function SelectionToolbar() {
   const selNodes = useStore(useShallow(s => s.nodes.filter(n => n.selected && !n.hidden)))
   const selExtras = useStore(useShallow(s => s.extras.filter(n => n.selected)))
   const [pinOpen, setPinOpen] = useState(false)
+  const [tpl, setTpl] = useState(false)
+  const readOnly = useStore(s => s.readOnly)
   const ids = [...selNodes.map(n => n.id), ...selExtras.map(n => n.id)]
-  if (ids.length < 2) return null
+  if (ids.length < 2 || readOnly) return tpl ? <SaveTemplateDialog ids={ids} onClose={() => setTpl(false)} /> : null
   const s = useStore.getState()
   const media = selNodes.filter(n => n.data.kind !== 'text')
   const downstream = (e: React.MouseEvent) => {
@@ -48,6 +51,8 @@ export function SelectionToolbar() {
           </span>
         )}
       </span>
+      <button title="Save as template" onClick={() => setTpl(true)}><Icon name="folder" /></button>
+      {tpl && <SaveTemplateDialog ids={ids} onClose={() => setTpl(false)} />}
       <button title="Duplicate" onClick={() => s.duplicate(selNodes.map(n => n.id))}><Icon name="copy" /></button>
       <button title="Delete" onClick={() => s.onNodesChange(ids.map(id => ({ type: 'remove' as const, id })))}><Icon name="trash" /></button>
     </NodeToolbar>

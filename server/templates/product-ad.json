@@ -1,0 +1,21 @@
+{
+  "id": "product-ad",
+  "name": "Product ad (9:16)",
+  "description": "Drop your product photo into the Product node, then generate hero, lifestyle and detail shots and a 3-clip vertical spot.",
+  "category": "Marketing",
+  "nodes": [
+    { "ref": "product", "kind": "image", "title": "Product (upload here)", "prompt": "", "params": { "aspect": "1:1" }, "x": 0, "y": 320 },
+    { "ref": "brief", "kind": "text", "title": "Brand brief", "prompt": "Premium, minimal, soft daylight, warm neutral palette. Keep the product shape, label and colors exactly unchanged.", "x": 0, "y": 0 },
+    { "ref": "hero", "kind": "image", "title": "Hero shot", "prompt": "Hero shot on a clean pedestal, soft key light, subtle reflection", "params": { "aspect": "9:16" }, "x": 420, "y": 0 },
+    { "ref": "life", "kind": "image", "title": "Lifestyle", "prompt": "Product in use in a bright modern home, natural light", "params": { "aspect": "9:16" }, "x": 420, "y": 360 },
+    { "ref": "detail", "kind": "image", "title": "Detail", "prompt": "Macro close-up of the texture and label", "params": { "aspect": "9:16" }, "x": 420, "y": 720 },
+    { "ref": "v1", "kind": "video", "title": "Spot 1", "prompt": "slow orbit around the product", "params": { "aspect": "9:16", "duration": 5 }, "x": 840, "y": 0 },
+    { "ref": "v2", "kind": "video", "title": "Spot 2", "prompt": "gentle handheld push-in", "params": { "aspect": "9:16", "duration": 5 }, "x": 840, "y": 360 },
+    { "ref": "v3", "kind": "video", "title": "Spot 3", "prompt": "rack focus from texture to logo", "params": { "aspect": "9:16", "duration": 5 }, "x": 840, "y": 720 }
+  ],
+  "edges": [
+    { "from": "brief", "to": "hero" }, { "from": "brief", "to": "life" }, { "from": "brief", "to": "detail" },
+    { "from": "product", "to": "hero" }, { "from": "product", "to": "life" }, { "from": "product", "to": "detail" },
+    { "from": "hero", "to": "v1" }, { "from": "life", "to": "v2" }, { "from": "detail", "to": "v3" }
+  ]
+}

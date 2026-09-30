@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { absolutize, canConnect, expandMentions, layoutBatch, resolveInputs, topoOrder, upstreamOf } from './graph'
+import { absolutize, canConnect, expandElements, expandMentions, layoutBatch, resolveInputs, topoOrder, upstreamOf } from './graph'
 import type { CanvasEdge, CanvasNode, NodeKind } from './types'
 
 const node = (id: string, kind: NodeKind, y: number, extra: { prompt?: string; url?: string } = {}): CanvasNode => ({
@@ -80,5 +80,18 @@ describe('absolutize', () => {
   it('adds the parent offset to children', () => {
     const [c] = absolutize([{ id: 'c', parentId: 'g', position: { x: 5, y: 6 } }], [{ id: 'g', position: { x: 100, y: 200 } }])
     expect(c.position).toEqual({ x: 105, y: 206 })
+  })
+})
+
+describe('expandElements', () => {
+  const mara = { id: 'e1', name: 'Mara', description: 'silver bob, yellow raincoat', refs: [{ url: '/files/m1.png', kind: 'image' }, { url: '/files/m2.png', kind: 'image' }] }
+  const empty = { texts: [], images: ['/files/other.png'], videos: [], audios: [] }
+  it('inlines the description and puts element refs first, capped by the model', () => {
+    const r = expandElements('@Mara runs through rain', empty, [mara], 2)
+    expect(r.prompt).toBe('Mara (silver bob, yellow raincoat) runs through rain')
+    expect(r.inputs.images).toEqual(['/files/m1.png', '/files/m2.png'])
+  })
+  it('leaves images alone for text-only models', () => {
+    expect(expandElements('@Mara', empty, [mara], 0).inputs.images).toEqual(['/files/other.png'])
   })
 })

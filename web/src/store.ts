@@ -1,9 +1,9 @@
 import { addEdge, applyEdgeChanges, applyNodeChanges, type Connection, type EdgeChange, type NodeChange, type ReactFlowInstance, type XYPosition } from '@xyflow/react'
 import { create } from 'zustand'
 import { api } from './api'
-import { absolutize, ancestors, canConnect, expandMentions, layoutBatch, nodeValue, resolveInputs, missingUpstream, topoOrder, upstreamOf } from './graph'
+import { absolutize, ancestors, canConnect, expandElements, expandMentions, layoutBatch, nodeValue, resolveInputs, missingUpstream, topoOrder, upstreamOf } from './graph'
 import { appendToPlaylist, placeResults } from './canvasOps'
-import type { AnyNode, Asset, CanvasEdge, CanvasNode, CanvasNodeData, ExtraNode, Job, ModelInfo, NodeKind, NodeParams, Output, StackNode, TimelineClip } from './types'
+import type { AnyNode, Asset, ElementItem, CanvasEdge, CanvasNode, CanvasNodeData, ExtraNode, Job, ModelInfo, NodeKind, NodeParams, Output, StackNode, TimelineClip } from './types'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
@@ -42,6 +42,10 @@ interface State {
   openStack?: string
   /** playlist shown in the bottom editor */
   activePlaylist?: string
+  /** library elements (reusable character / product references, used as @Name) */
+  elements: ElementItem[]
+  /** shared view-only link (?view=1): nothing can be edited */
+  readOnly: boolean
   panel: Panel
   settingsOpen: boolean
   projectsOpen: boolean
@@ -59,6 +63,7 @@ interface Actions {
   set: (patch: Partial<State>) => void
   notify: (text: string, kind?: 'error' | 'info') => void
   loadModels: () => Promise<void>
+  loadElements: () => Promise<void>
   openProject: (id?: string) => Promise<void>
   save: () => Promise<void>
   checkpoint: () => void
@@ -103,7 +108,8 @@ let stopRequested = false
 export const useStore = create<State & Actions>((set, get) => ({
   projectName: 'Untitled',
   nodes: [], extras: [], edges: [], timeline: [], models: [],
-  canvasSettings: loadCanvasSettings(), commentMode: false, searchOpen: false,
+  canvasSettings: loadCanvasSettings(), commentMode: false, searchOpen: false, elements: [],
+  readOnly: typeof location !== 'undefined' && new URLSearchParams(location.search).get('view') === '1',
   panel: null, settingsOpen: false, projectsOpen: false, addMenu: null,
   dirty: false, saving: false, runningAll: false, past: [], future: [],
 
@@ -114,6 +120,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   },
 
   async loadModels() { set({ models: await api.models() }) },
+  async loadElements() { set({ elements: await api.elements() }) },
 
   async openProject(id) {
     let list = id ? null : await api.projects()
@@ -130,7 +137,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       }]
     }
     set({ projectId: p.id, projectName: p.name, nodes, extras, edges: p.edges, timeline: [], past: [], future: [], dirty: false, projectsOpen: false, openStack: undefined, activePlaylist: extras.find(e => e.type === 'playlist')?.id })
-    localStorage.setItem('taplocal:project', p.id)
+    if (!get().readOnly) localStorage.setItem('taplocal:project', p.id)
     requestAnimationFrame(() => {
       const rf = get().rf
       if (!rf) return
@@ -141,7 +148,7 @@ export const useStore = create<State & Actions>((set, get) => ({
 
   async save() {
     const s = get()
-    if (!s.projectId) return
+    if (!s.projectId || s.readOnly) return
     set({ saving: true })
     try {
       await api.saveProject({ id: s.projectId, name: s.projectName, updatedAt: Date.now(), nodes: s.nodes, extras: s.extras, edges: s.edges, timeline: s.timeline, viewport: s.rf?.getViewport() })
@@ -278,7 +285,9 @@ export const useStore = create<State & Actions>((set, get) => ({
     if (!n || n.data.status === 'queued' || n.data.status === 'running') return
     const missing = missingUpstream(id, nodes, edges)
     if (missing.length) get().notify(`Upstream "${missing[0].data.title}" has no output yet — it will be ignored`, 'info')
-    const { prompt, inputs } = expandMentions(n.data.prompt, upstreamOf(id, nodes, edges), resolveInputs(id, nodes, edges))
+    const mentioned = expandMentions(n.data.prompt, upstreamOf(id, nodes, edges), resolveInputs(id, nodes, edges))
+    const maxImages = get().models.find(m => m.id === n.data.model)?.maxImages ?? 0
+    const { prompt, inputs } = expandElements(mentioned.prompt, mentioned.inputs, get().elements, maxImages)
     if (n.data.kind !== 'text' && !prompt.trim() && !inputs.texts.length && !inputs.images.length) {
       get().notify('Write a prompt or connect an input first', 'error')
       waiters.get(id)?.(false)

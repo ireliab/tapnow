@@ -4,8 +4,11 @@ import './agent/agent.css'
 import './canvas.css'
 import './tools/tools.css'
 import './panels/playlist.css'
+import './panels/library.css'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { api, connectJobs } from './api'
+import { useAgent } from './agent/agentStore'
+import { Icon } from './icons'
 import { addComment, addToStack, appendToPlaylist, copySelection, pasteNodes } from './canvasOps'
 import CanvasNodeView from './nodes/CanvasNodeView'
 import { CommentNodeView, GroupNodeView, StackGallery, StackNodeView } from './nodes/ExtraNodes'
@@ -13,7 +16,7 @@ import { PinBar, SearchOverlay, SelectionToolbar } from './panels/CanvasChrome'
 import { AddMenu, Lightbox, ProjectsModal, Toast, Toolbar, TopBar } from './panels/Chrome'
 import { SettingsModal } from './panels/SettingsModal'
 import { AgentPanel } from './agent/AgentPanel'
-import { AssetsPanel } from './panels/SidePanels'
+import { LibraryPanel } from './panels/LibraryPanel'
 import { PlaylistPanel } from './panels/PlaylistPanel'
 import { PlaylistNodeView } from './nodes/PlaylistNodeView'
 import { combinedNodes, useStore } from './store'
@@ -33,6 +36,7 @@ function Canvas() {
   const all = useMemo(() => combinedNodes(nodes, extras), [nodes, extras])
   const edges = useStore(s => s.edges)
   const commentMode = useStore(s => s.commentMode)
+  const readOnly = useStore(s => s.readOnly)
   const snapToGrid = useStore(s => s.canvasSettings.snapToGrid)
   const panel = useStore(s => s.panel)
   const s = useStore.getState()
@@ -45,7 +49,9 @@ function Canvas() {
       // module-level guard: StrictMode double-mount must not create two first projects
       booted = true
       s.loadModels().catch(e => s.notify(`Server unreachable: ${e.message}`, 'error'))
-      s.openProject(localStorage.getItem('taplocal:project') ?? undefined).catch(() => s.openProject())
+      s.loadElements().catch(() => {})
+      const linked = new URLSearchParams(location.search).get('project')
+      s.openProject(linked ?? localStorage.getItem('taplocal:project') ?? undefined).catch(() => s.openProject())
     }
     return connectJobs(job => useStore.getState().handleJob(job))
   }, [])
@@ -81,7 +87,7 @@ function Canvas() {
       if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); st.save(); return }
       if (mod && e.key.toLowerCase() === 'j') { e.preventDefault(); st.set({ panel: st.panel === 'agent' ? null : 'agent' }); return }
       if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); st.set({ searchOpen: true }); return }
-      if (isTyping(e)) return
+      if (isTyping(e) || st.readOnly) return
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? st.redo() : st.undo() }
       else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); st.redo() }
       else if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); st.duplicate(st.nodes.filter(n => n.selected).map(n => n.id)) }
@@ -147,9 +153,9 @@ function Canvas() {
     <div className="app">
       <TopBar />
       <div className="main">
-        <Toolbar onUpload={() => fileInput.current?.click()} />
+        {!readOnly && <Toolbar onUpload={() => fileInput.current?.click()} />}
         <div className={'canvas' + (commentMode ? ' comment-mode' : '')} ref={wrapper} onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }} onDrop={onDrop}
-          onDoubleClick={e => { if ((e.target as HTMLElement).classList.contains('react-flow__pane')) openAddMenu(e.clientX, e.clientY) }}>
+          onDoubleClick={e => { if (!readOnly && (e.target as HTMLElement).classList.contains('react-flow__pane')) openAddMenu(e.clientX, e.clientY) }}>
           <ReactFlow<AnyNode, CanvasEdge>
             nodes={all} edges={edges} nodeTypes={nodeTypes}
             onPaneClick={e => { const st = useStore.getState(); if (st.commentMode && st.rf) addComment(st.rf.screenToFlowPosition({ x: e.clientX, y: e.clientY })) }}
@@ -160,7 +166,7 @@ function Canvas() {
             onNodeDragStart={() => s.checkpoint()}
             onMoveEnd={() => useStore.setState({ dirty: true })}
             zoomOnDoubleClick={false} connectOnClick={false} minZoom={0.1} maxZoom={2.5} proOptions={{ hideAttribution: true }}
-            deleteKeyCode={['Backspace', 'Delete']} multiSelectionKeyCode={['Shift', 'Meta', 'Control']}
+            deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']} nodesDraggable={!readOnly} nodesConnectable={!readOnly} multiSelectionKeyCode={['Shift', 'Meta', 'Control']}
             selectionOnDrag panOnDrag={[1, 2]} panOnScroll selectionKeyCode={null}
             defaultEdgeOptions={{ type: 'default', animated: false }} colorMode="dark" fitView
           >
@@ -171,7 +177,8 @@ function Canvas() {
           </ReactFlow>
           <PinBar />
           {commentMode && <div className="mode-hint">Click anywhere to place a comment · Esc to cancel</div>}
-          {!nodes.length && (
+          {readOnly && <ViewOnlyBanner />}
+          {!nodes.length && !readOnly && (
             <div className="empty-canvas">
               <h1>Start creating</h1>
               <p>Double-click the canvas to add a node, press <kbd>T</kbd> <kbd>I</kbd> <kbd>V</kbd> <kbd>A</kbd>, drop files here, or ask the Agent for a storyboard.</p>
@@ -184,7 +191,7 @@ function Canvas() {
           <AddMenu />
         </div>
         {panel === 'agent' && <AgentPanel />}
-        {panel === 'assets' && <AssetsPanel />}
+        {panel === 'assets' && <LibraryPanel />}
       </div>
       <PlaylistPanel />
       <input ref={fileInput} type="file" multiple hidden accept="image/*,video/*,audio/*"
@@ -195,6 +202,26 @@ function Canvas() {
       <SearchOverlay />
       <Lightbox />
       <Toast />
+    </div>
+  )
+}
+
+/** Shared view-only link: browse, preview, ask how it was made, or clone to edit. */
+function ViewOnlyBanner() {
+  const projectId = useStore(s => s.projectId)
+  const clone = async () => {
+    const c = await api.cloneProject(projectId!)
+    location.href = `/?project=${c.id}`
+  }
+  const explain = () => {
+    useStore.setState({ panel: 'agent' })
+    setTimeout(() => useAgent.getState().send({ text: 'Explain how this canvas was made', refs: [], skills: ['explain-canvas'] }), 300)
+  }
+  return (
+    <div className="view-banner">
+      <b>View only</b><span className="muted">Changes are not saved.</span>
+      <button className="btn" onClick={explain}><Icon name="bot" size={14} /> Explain how it's made</button>
+      <button className="btn primary" onClick={clone}><Icon name="copy" size={14} /> Clone to edit</button>
     </div>
   )
 }

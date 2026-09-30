@@ -1,0 +1,19 @@
+/* ---------- library, elements, templates, projects, view-only ---------- */
+.library-panel { width: 380px; }
+.library-panel .panel-head { justify-content: space-between; }
+.library-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.skills-head select { height: 30px; background: var(--card-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 0 8px; }
+.element-thumbs { width: 54px; height: 54px; flex: none; position: relative; display: grid; place-items: center; background: rgba(124, 108, 255, .15); color: var(--accent-2); border-radius: 12px; overflow: hidden; }
+.element-thumbs img { position: absolute; width: 38px; height: 38px; object-fit: cover; border-radius: 8px; border: 2px solid var(--card); }
+.element-thumbs img:nth-child(1) { left: 2px; top: 2px; } .element-thumbs img:nth-child(2) { right: 2px; top: 8px; } .element-thumbs img:nth-child(3) { left: 10px; bottom: 2px; }
+.element-refs { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.element-refs .ref { position: relative; width: 84px; height: 84px; border-radius: 10px; overflow: hidden; background: var(--card-2); border: 1px solid var(--line-2); }
+.element-refs .ref img { width: 100%; height: 100%; object-fit: cover; }
+.element-refs .ref button { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 6px; background: rgba(0, 0, 0, .6); }
+.element-refs .ref.add { display: grid; place-items: center; cursor: pointer; color: var(--muted); border-style: dashed; }
+.projects-bar { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.card-tools { position: absolute; top: 6px; right: 6px; display: none; gap: 2px; background: rgba(0, 0, 0, .6); border-radius: 9px; padding: 2px; }
+.project-card:hover .card-tools { display: flex; }
+.card-tools .icon-btn { width: 26px; height: 26px; }
+.gallery-list { display: flex; flex-direction: column; gap: 0; margin-top: 12px; }
+.view-banner { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 16px; background: var(--panel); border: 1px solid var(--accent); border-radius: 99px; box-shadow: 0 10px 30px rgba(0, 0, 0, .5); white-space: nowrap; }

@@ -7,6 +7,7 @@ import multer from 'multer'
 import { WebSocketServer } from 'ws'
 import { uniqueNames, zip } from './zip.js'
 import { opsRouter } from './ops.js'
+import { libraryRouter } from './library.js'
 import { agentRouter, skillsRouter } from './agent/routes.js'
 import { cancel, enqueue, listJobs, onJobUpdate } from './jobs.js'
 import { catalog } from './providers/index.js'
@@ -82,6 +83,9 @@ app.post('/api/generate', wrap(async (req, res) => {
 }))
 app.get('/api/jobs', (_req, res) => { res.json(listJobs()) })
 app.post('/api/jobs/:id/cancel', (req, res) => { cancel(req.params.id); res.json({ ok: true }) })
+
+// library, elements, templates, project clone/export/import
+app.use('/api', libraryRouter)
 
 // local ffmpeg media ops (trim, capture frame, smart clip)
 app.use('/api/ops', opsRouter)

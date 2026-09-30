@@ -240,11 +240,17 @@ function Composer() {
   useEffect(() => { if (focusTick) ta.current?.focus() }, [focusTick])
 
   const setText = (text: string) => a.set({ draft: { ...useAgent.getState().draft, text } })
+  const elements = useStore(s => s.elements)
   const candidates = useMemo(() => {
     if (!mention) return []
     const q = mention.q.toLowerCase()
-    return nodes.filter(n => !n.hidden && n.data.title.toLowerCase().includes(q)).slice(0, 8)
-  }, [mention, nodes])
+    return [
+      ...nodes.filter(n => !n.hidden && n.data.title.toLowerCase().includes(q)).slice(0, 8)
+        .map(n => ({ nodeId: n.id, title: n.data.title, kind: n.data.kind as string })),
+      ...elements.filter(e => e.name.toLowerCase().includes(q))
+        .map(e => ({ nodeId: `element:${e.id}`, title: e.name, kind: 'element', value: `${e.description} · refs: ${e.refs.map(r => r.url).join(', ')}` })),
+    ]
+  }, [mention, nodes, elements])
 
   const onChange = (v: string, caret: number) => {
     setText(v)
@@ -252,12 +258,12 @@ function Composer() {
     setMention(m ? { q: m[2], at: caret - m[2].length - 1 } : null)
     setHi(0)
   }
-  const pickMention = (n: (typeof nodes)[number]) => {
+  const pickMention = (n: NodeRef) => {
     if (!mention) return
     const t = useAgent.getState().draft.text
     const caretEnd = mention.at + 1 + mention.q.length
-    setText(`${t.slice(0, mention.at)}@${n.data.title} ${t.slice(caretEnd)}`)
-    a.addRef({ nodeId: n.id, title: n.data.title, kind: n.data.kind })
+    setText(`${t.slice(0, mention.at)}@${n.title} ${t.slice(caretEnd)}`)
+    a.addRef(n)
     setMention(null)
     ta.current?.focus()
   }
@@ -292,7 +298,7 @@ function Composer() {
       )}
       {mention && candidates.length > 0 && (
         <div className="mention-pop">
-          {candidates.map((n, i) => <button key={n.id} className={i === hi ? 'on' : ''} onMouseDown={e => { e.preventDefault(); pickMention(n) }}><Icon name={n.data.kind} size={12} /> {n.data.title}</button>)}
+          {candidates.map((n, i) => <button key={n.nodeId} className={i === hi ? 'on' : ''} onMouseDown={e => { e.preventDefault(); pickMention(n) }}>{n.kind === 'element' ? <span className="chip skill">element</span> : <Icon name={n.kind as IconName} size={12} />} {n.title}</button>)}
         </div>
       )}
       {menu && <div className="backdrop-clear" onPointerDown={() => setMenu(null)} />}

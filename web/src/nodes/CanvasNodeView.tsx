@@ -6,6 +6,7 @@ import { Icon } from '../icons'
 import { KIND_LABEL, useStore } from '../store'
 import type { CanvasNode, Output } from '../types'
 import { Composer } from './Composer'
+import { SaveToLibraryDialog } from '../panels/LibraryPanel'
 import { TextBody } from './TextBody'
 import { ToolsMenu } from '../tools/ToolsMenu'
 import { Waveform } from '../tools/Waveform'
@@ -33,9 +34,11 @@ const ASPECT: Record<string, string> = { '1:1': '1 / 1', '16:9': '16 / 9', '9:16
 
 function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
   const { updateData, removeNode, duplicate, addToTimeline, set, projectId, notify } = useStore.getState()
+  const readOnly = useStore(s => s.readOnly)
   const inTimeline = useStore(s => s.extras.some(e => e.type === 'playlist' && e.data.clips.some(c => c.nodeId === id)))
   const zoom = useFlow(s => s.transform[2])
   const fileRef = useRef<HTMLInputElement>(null)
+  const [saving, setSaving] = useState(false)
   const out = activeOutput({ data } as CanvasNode)
   const busy = data.status === 'queued' || data.status === 'running'
   // only show the composer for a single selected node
@@ -59,7 +62,7 @@ function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
         <input className="nodrag title-input" value={data.title} onChange={e => updateData(id, { title: e.target.value })} />
       </div>
 
-      {selected && (
+      {selected && !readOnly && (
         <div className="cnode-toolbar nodrag" style={{ transform: `translateX(-50%) scale(${Math.min(2.5, Math.max(1, 1 / zoom))})` }}>
           <ToolsMenu id={id} data={data} />
           {data.kind !== 'text' && <button title="Upload file" onClick={() => fileRef.current?.click()}><Icon name="upload" /></button>}
@@ -68,6 +71,7 @@ function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
           {(data.kind === 'video' || data.kind === 'image') && (
             <button title={inTimeline ? 'In a playlist' : 'Add to playlist'} disabled={inTimeline} onClick={() => addToTimeline(id)}><Icon name={inTimeline ? 'check' : 'timeline'} /></button>
           )}
+          <button title="Save to library" onClick={() => setSaving(true)}><Icon name="folder" /></button>
           <button title="Duplicate (Ctrl+D)" onClick={() => duplicate([id])}><Icon name="copy" /></button>
           <button title="Delete" onClick={() => removeNode(id)}><Icon name="trash" /></button>
         </div>
@@ -121,7 +125,8 @@ function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
       </div>
 
       <input ref={fileRef} type="file" hidden accept={`${data.kind}/*`} onChange={e => { onUpload(e.target.files); e.target.value = '' }} />
-      {soloSelected && <Composer id={id} data={data} zoom={zoom} />}
+      {soloSelected && !readOnly && <Composer id={id} data={data} zoom={zoom} />}
+      {saving && <SaveToLibraryDialog node={{ id, data } as CanvasNode} onClose={() => setSaving(false)} />}
     </div>
   )
 }

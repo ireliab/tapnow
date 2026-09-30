@@ -2,7 +2,8 @@ import type { XYPosition } from '@xyflow/react'
 import { nodeValue } from './graph'
 import { combinedNodes, useStore, type ResultMode } from './store'
 import { newClip } from './playlist'
-import type { AnyNode, CanvasEdge, CanvasNode, CommentData, ExtraNode, GroupNode, Output, PlaylistClip, PlaylistNode, StackNode } from './types'
+import { defaultModel, NODE_WIDTH } from './store'
+import type { AnyNode, CanvasEdge, CanvasNode, CommentData, ExtraNode, GroupNode, Output, PlaylistClip, PlaylistNode, StackNode, Template, TemplateNode } from './types'
 
 /**
  * Canvas organisation actions (TapNow "Organize your canvas" / "Stack nodes" / groups /
@@ -238,4 +239,48 @@ export function appendToPlaylist(ids: string[], playlistId?: string) {
 
 export function setClips(playlistId: string, clips: PlaylistClip[]) {
   useStore.setState(s => ({ extras: s.extras.map(e => (e.id === playlistId && e.type === 'playlist' ? { ...e, data: { ...e.data, clips } } : e)), dirty: true }))
+}
+
+// ---------- templates ----------
+/** Add a template's nodes at the viewport centre (never replaces the canvas). */
+export function applyTemplate(t: Template) {
+  const s = S()
+  const center = s.rf ? s.rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 }) : { x: 0, y: 0 }
+  const xs = t.nodes.map(n => n.x ?? 0), ys = t.nodes.map(n => n.y ?? 0)
+  const w = Math.max(...xs) - Math.min(...xs) + 360, h = Math.max(...ys) - Math.min(...ys) + 300
+  const origin = { x: center.x - w / 2 - Math.min(...xs), y: center.y - h / 2 - Math.min(...ys) }
+  const ids: Record<string, string> = {}
+  const nodes: CanvasNode[] = t.nodes.map((tn, i) => {
+    const id = `${tn.kind}-${uid()}`
+    ids[tn.ref] = id
+    const model = tn.model && s.models.some(m => m.id === tn.model && m.available) ? tn.model : defaultModel(s.models, tn.kind)
+    return {
+      id, type: 'canvas', position: { x: origin.x + (tn.x ?? i * 380), y: origin.y + (tn.y ?? 0) }, width: NODE_WIDTH[tn.kind], selected: true,
+      data: {
+        kind: tn.kind, title: tn.title ?? tn.kind, prompt: tn.prompt ?? '', model,
+        params: { ...(tn.kind === 'video' ? { aspect: '16:9', duration: 5 } : tn.kind === 'image' ? { aspect: '16:9' } : {}), ...tn.params },
+        outputs: tn.outputs ?? [], active: Math.max(0, (tn.outputs?.length ?? 1) - 1), status: tn.outputs?.length ? 'done' : 'idle',
+      },
+    }
+  })
+  const edges = t.edges.filter(e => ids[e.from] && ids[e.to]).map(e => ({ id: `e-${uid()}`, source: ids[e.from], target: ids[e.to] }))
+  commit({ nodes: [...s.nodes.map(n => ({ ...n, selected: false })), ...nodes], edges: [...s.edges, ...edges] })
+  requestAnimationFrame(() => S().rf?.fitView({ nodes: nodes.map(n => ({ id: n.id })), padding: 0.2, duration: 500 }))
+  s.notify(`Added "${t.name}" — ${nodes.length} nodes`)
+}
+
+/** Selected media nodes (+ their connections) as a template. */
+export function selectionAsTemplate(ids: string[], includeOutputs: boolean): Pick<Template, 'nodes' | 'edges'> {
+  const s = S()
+  const nodes = s.nodes.filter(n => ids.includes(n.id) && !n.hidden)
+  const pos = new Map(nodes.map(n => [n.id, absPos(n)]))
+  const minX = Math.min(...[...pos.values()].map(p => p.x)), minY = Math.min(...[...pos.values()].map(p => p.y))
+  const tnodes: TemplateNode[] = nodes.map((n, i) => ({
+    ref: `n${i}`, kind: n.data.kind, title: n.data.title, prompt: n.data.prompt, model: n.data.model,
+    params: { ...n.data.params, mask: undefined }, x: pos.get(n.id)!.x - minX, y: pos.get(n.id)!.y - minY,
+    ...(includeOutputs && n.data.outputs.length ? { outputs: [n.data.outputs[n.data.active] ?? n.data.outputs.at(-1)!] } : {}),
+  }))
+  const ref = new Map(nodes.map((n, i) => [n.id, `n${i}`]))
+  const edges = s.edges.filter(e => ref.has(e.source) && ref.has(e.target)).map(e => ({ from: ref.get(e.source)!, to: ref.get(e.target)! }))
+  return { nodes: tnodes, edges }
 }

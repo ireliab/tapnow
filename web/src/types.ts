@@ -67,6 +67,11 @@ export interface Project {
   viewport?: { x: number; y: number; zoom: number }
 }
 
+export interface LibraryItem { id: string; kind: 'image' | 'video' | 'audio' | 'text'; name: string; folder: string; url?: string; mime?: string; text?: string; prompt?: string; createdAt: number }
+export interface ElementItem { id: string; name: string; kind: 'character' | 'product' | 'brand' | 'other'; description: string; refs: Array<{ url: string; kind: string }>; createdAt: number; updatedAt: number }
+export interface TemplateNode { ref: string; kind: NodeKind; title?: string; prompt?: string; model?: string; params?: NodeParams; x?: number; y?: number; outputs?: Output[] }
+export interface Template { id: string; name: string; description: string; category: string; source: 'public' | 'mine'; nodes: TemplateNode[]; edges: Array<{ from: string; to: string }>; createdAt?: number }
+
 export interface ProjectMeta { id: string; name: string; updatedAt: number; nodeCount: number; thumb?: string }
 
 export interface ModelInfo {

@@ -4,7 +4,7 @@ import { Icon } from '../icons'
 import { useStore } from '../store'
 import type { Asset } from '../types'
 
-export function AssetsPanel() {
+export function AssetsPanel({ embedded = false }: { embedded?: boolean }) {
   const [assets, setAssets] = useState<Asset[]>([])
   const [filter, setFilter] = useState<'all' | Asset['kind']>('all')
   const [q, setQ] = useState('')
@@ -22,8 +22,8 @@ export function AssetsPanel() {
     setAssets(x => x.filter(y => y.id !== a.id))
   }
   return (
-    <aside className="side-panel">
-      <div className="panel-head"><Icon name="folder" /> Assets <span className="muted">{assets.length}</span></div>
+    <Wrap embedded={embedded}>
+      {!embedded && <div className="panel-head"><Icon name="folder" /> Assets <span className="muted">{assets.length}</span></div>}
       <div className="skills-head">
         <input placeholder="Search prompts, names, models…" value={q} onChange={e => setQ(e.target.value)} />
         <select value={scope} onChange={e => setScope(e.target.value as 'project' | 'all')} title="History scope">
@@ -47,6 +47,9 @@ export function AssetsPanel() {
         ))}
         {!shown.length && <p className="muted pad">Nothing here yet. Generate or upload something — drag assets onto the canvas.</p>}
       </div>
-    </aside>
+    </Wrap>
   )
 }
+
+const Wrap = ({ embedded, children }: { embedded: boolean; children: React.ReactNode }) =>
+  embedded ? <div className="library-body">{children}</div> : <aside className="side-panel">{children}</aside>

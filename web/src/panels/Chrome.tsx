@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api } from '../api'
-import { createPlaylist } from '../canvasOps'
+import { applyTemplate, createPlaylist } from '../canvasOps'
+import { TemplateCard } from './LibraryPanel'
 import { canConnect } from '../graph'
 import { Icon, type IconName } from '../icons'
 import { Media } from '../nodes/CanvasNodeView'
 import { KIND_LABEL, useStore } from '../store'
-import type { NodeKind, ProjectMeta } from '../types'
+import type { NodeKind, ProjectMeta, Template } from '../types'
 
 export function TopBar() {
   const { projectName, dirty, saving, runningAll, past, future } = useStore()
@@ -52,7 +53,7 @@ export function Toolbar({ onUpload }: { onUpload: () => void }) {
       <button title="Search nodes (Ctrl+F)" onClick={() => set({ searchOpen: true })}><Icon name="list" size={18} /><span>Search</span></button>
       <button title="New playlist (from selected clips)" onClick={() => createPlaylist(useStore.getState().nodes.filter(n => n.selected).map(n => n.id))}><Icon name="timeline" size={18} /><span>Playlist</span></button>
       <hr />
-      <button className={panel === 'assets' ? 'on' : ''} title="Assets" onClick={() => toggle('assets')}><Icon name="folder" size={18} /><span>Assets</span></button>
+      <button className={panel === 'assets' ? 'on' : ''} title="Library: assets, saved items, elements, templates" onClick={() => toggle('assets')}><Icon name="folder" size={18} /><span>Library</span></button>
       <button className={panel === 'agent' ? 'on' : ''} title="Agent" onClick={() => toggle('agent')}><Icon name="bot" size={18} /><span>Agent</span></button>
     </nav>
   )
@@ -91,29 +92,65 @@ export function ProjectsModal() {
   const current = useStore(s => s.projectId)
   const { set, openProject, save, notify } = useStore.getState()
   const [list, setList] = useState<ProjectMeta[]>([])
+  const [tab, setTab] = useState<'mine' | 'gallery'>('mine')
+  const [templates, setTemplates] = useState<Template[]>([])
+  const importRef = useRef<HTMLInputElement>(null)
   const refresh = () => api.projects().then(setList)
-  useEffect(() => { if (open) refresh() }, [open])
+  useEffect(() => { if (open) { refresh(); api.templates().then(setTemplates) } }, [open])
   if (!open) return null
   const create = async () => { await save(); const p = await api.createProject('Untitled'); await openProject(p.id) }
   const openOne = async (id: string) => { await save(); await openProject(id) }
   const remove = async (p: ProjectMeta) => {
-    if (!confirm(`Delete project "${p.name}"? Generated files stay in Assets.`)) return
+    if (!confirm(`Delete project "${p.name}"? Generated files stay in the Library.`)) return
     await api.deleteProject(p.id)
     if (p.id === current) await openProject()
     refresh(); notify('Project deleted')
   }
+  const clone = async (p: ProjectMeta) => { await save(); const c = await api.cloneProject(p.id); notify(`Cloned "${p.name}"`); await openProject(c.id) }
+  const share = (p: ProjectMeta) => {
+    const url = `${location.origin}/?project=${p.id}&view=1`
+    navigator.clipboard.writeText(url).then(() => notify('View-only link copied — anyone who can reach this server can open it'), () => prompt('View-only link', url))
+  }
+  const doImport = async (f?: File) => {
+    if (!f) return
+    try { await save(); const p = await api.importProject(f); notify(`Imported "${p.name}"`); await openProject(p.id) } catch (e: any) { notify(e.message, 'error') }
+  }
+  const fromTemplate = async (t: Template) => {
+    await save()
+    const p = await api.createProject(t.name)
+    await openProject(p.id)
+    requestAnimationFrame(() => applyTemplate(t))
+  }
   return (
     <Modal onClose={() => set({ projectsOpen: false })} title="Projects" wide>
-      <div className="project-grid">
-        <button className="project-card new" onClick={create}><Icon name="plus" size={28} /><span>New project</span></button>
-        {list.map(p => (
-          <div key={p.id} className={`project-card ${p.id === current ? 'current' : ''}`} onClick={() => openOne(p.id)}>
-            <div className="thumb">{p.thumb ? <img src={p.thumb} alt="" /> : <Icon name="grid" size={28} />}</div>
-            <div className="meta"><b>{p.name}</b><span>{p.nodeCount} nodes · {new Date(p.updatedAt).toLocaleString()}</span></div>
-            <button className="icon-btn del" title="Delete" onClick={e => { e.stopPropagation(); remove(p) }}><Icon name="trash" /></button>
-          </div>
-        ))}
+      <div className="projects-bar">
+        <div className="seg small"><button className={tab === 'mine' ? 'on' : ''} onClick={() => setTab('mine')}>My projects</button><button className={tab === 'gallery' ? 'on' : ''} onClick={() => setTab('gallery')}>Template gallery</button></div>
+        <div className="spacer" />
+        <button className="btn" onClick={() => importRef.current?.click()}><Icon name="upload" size={14} /> Import .taplocal.zip</button>
+        <input ref={importRef} type="file" hidden accept=".zip,application/zip" onChange={e => { doImport(e.target.files?.[0]); e.target.value = '' }} />
       </div>
+      {tab === 'mine' ? (
+        <div className="project-grid">
+          <button className="project-card new" onClick={create}><Icon name="plus" size={28} /><span>New project</span></button>
+          {list.map(p => (
+            <div key={p.id} className={`project-card ${p.id === current ? 'current' : ''}`} onClick={() => openOne(p.id)}>
+              <div className="thumb">{p.thumb ? <img src={p.thumb} alt="" /> : <Icon name="grid" size={28} />}</div>
+              <div className="meta"><b>{p.name}</b><span>{p.nodeCount} nodes · {new Date(p.updatedAt).toLocaleString()}</span></div>
+              <div className="card-tools" onClick={e => e.stopPropagation()}>
+                <button className="icon-btn" title="Clone" onClick={() => clone(p)}><Icon name="copy" /></button>
+                <a className="icon-btn" title="Export as .taplocal.zip" href={`/api/projects/${p.id}/export`} download><Icon name="download" /></a>
+                <button className="icon-btn" title="Copy view-only link" onClick={() => share(p)}><Icon name="send" /></button>
+                <button className="icon-btn" title="Delete" onClick={() => remove(p)}><Icon name="trash" /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="gallery-list">
+          <p className="muted">Start a new project from a workflow recipe — study the nodes, prompts and models, then remix.</p>
+          {templates.map(t => <TemplateCard key={t.id} t={t} onApply={() => fromTemplate(t)} />)}
+        </div>
+      )}
     </Modal>
   )
 }

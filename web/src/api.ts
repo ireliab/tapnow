@@ -1,4 +1,4 @@
-import type { Asset, Job, ModelInfo, NodeParams, Project, ProjectMeta, Settings } from './types'
+import type { Asset, ElementItem, Job, LibraryItem, ModelInfo, NodeParams, Project, ProjectMeta, Settings, Template } from './types'
 
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -33,6 +33,25 @@ export const api = {
     inputs: { texts: string[]; images: string[]; videos: string[]; audios: string[] }
   }) => req<Job>('POST', '/api/generate', body),
   cancel: (jobId: string) => req('POST', `/api/jobs/${jobId}/cancel`),
+  // library / elements / templates
+  library: () => req<{ folders: string[]; items: LibraryItem[] }>('GET', '/api/library'),
+  saveToLibrary: (item: Partial<LibraryItem>) => req<LibraryItem>('POST', '/api/library', item),
+  moveLibraryItem: (id: string, folder: string) => req('PATCH', `/api/library/${id}`, { folder }),
+  deleteLibraryItem: (id: string) => req('DELETE', `/api/library/${id}`),
+  addFolder: (name: string) => req<{ folders: string[] }>('POST', '/api/library/folders', { name }),
+  elements: () => req<ElementItem[]>('GET', '/api/elements'),
+  saveElement: (e: Partial<ElementItem>) => req<ElementItem>('PUT', `/api/elements${e.id ? `/${e.id}` : ''}`, e),
+  deleteElement: (id: string) => req('DELETE', `/api/elements/${id}`),
+  templates: () => req<Template[]>('GET', '/api/templates'),
+  saveTemplate: (t: Partial<Template>) => req<Template>('POST', '/api/templates', t),
+  deleteTemplate: (id: string) => req('DELETE', `/api/templates/${id}`),
+  // projects: clone / import (export is a plain download link)
+  cloneProject: (id: string, name?: string) => req<Project>('POST', `/api/projects/${id}/clone`, { name }),
+  importProject(file: File) {
+    const f = new FormData()
+    f.append('file', file)
+    return req<Project>('POST', '/api/projects/import', f)
+  },
 }
 
 /** Job updates over WebSocket, with auto-reconnect. */

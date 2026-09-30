@@ -175,3 +175,25 @@ export function ancestors(ids: string[], edges: CanvasEdge[]) {
   }
   return out
 }
+
+export interface ElementRef { id: string; name: string; description: string; refs: Array<{ url: string; kind: string }> }
+
+/**
+ * `@Name` of a library Element: its reference images join the inputs (first, up to
+ * `maxImages`) and the mention becomes "Name (description)" so the model keeps the
+ * subject consistent.
+ */
+export function expandElements(prompt: string, inputs: ReturnType<typeof resolveInputs>, elements: ElementRef[], maxImages: number) {
+  const used = [...elements].sort((a, b) => b.name.length - a.name.length).filter(e => prompt.includes(`@${e.name}`))
+  if (!used.length) return { prompt, inputs }
+  let text = prompt
+  const refImages: string[] = []
+  for (const e of used) {
+    text = text.split(`@${e.name}`).join(e.description ? `${e.name} (${e.description})` : e.name)
+    for (const r of e.refs) if (r.kind === 'image' && !refImages.includes(r.url)) refImages.push(r.url)
+  }
+  // text-only models ignore references; otherwise element refs go first and the list is capped
+  if (maxImages <= 0) return { prompt: text, inputs }
+  const images = [...refImages, ...inputs.images.filter(u => !refImages.includes(u))].slice(0, maxImages)
+  return { prompt: text, inputs: { ...inputs, images } }
+}

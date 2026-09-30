@@ -1,0 +1,13 @@
+{
+  "id": "character-sheet",
+  "name": "Character sheet",
+  "description": "One canonical description feeds a turnaround, an expression grid (split it with Quick Split) and an action pose.",
+  "category": "Characters",
+  "nodes": [
+    { "ref": "desc", "kind": "text", "title": "Character — canonical description", "prompt": "Mara, 28, courier in a rainy cyberpunk city. Short silver bob, amber eyes, freckles, oversized yellow raincoat, black cargo pants, worn sneakers.", "x": 0, "y": 320 },
+    { "ref": "turn", "kind": "image", "title": "Turnaround", "prompt": "Character turnaround sheet: front, side and back views on a neutral grey background, identical lighting", "params": { "aspect": "16:9" }, "x": 420, "y": 0 },
+    { "ref": "expr", "kind": "image", "title": "Expressions 2×2", "prompt": "2x2 grid of facial expressions: neutral, happy, angry, surprised; same framing", "params": { "aspect": "1:1" }, "x": 420, "y": 330 },
+    { "ref": "pose", "kind": "image", "title": "Action pose", "prompt": "Dynamic action pose sprinting across a neon-lit rooftop in the rain", "params": { "aspect": "16:9" }, "x": 420, "y": 720 }
+  ],
+  "edges": [{ "from": "desc", "to": "turn" }, { "from": "desc", "to": "expr" }, { "from": "desc", "to": "pose" }]
+}
