@@ -1,3 +1,4 @@
+import { appendToPlaylist, playlists } from '../canvasOps'
 import { nodeValue } from '../graph'
 import { useStore, type BatchNode } from '../store'
 import { useAgent, type Pending, type PendingBody } from './agentStore'
@@ -45,7 +46,7 @@ export async function runClientTool(name: string, args: any, callId: string): Pr
         })),
         edges: s.edges.map(e => ({ from: e.source, to: e.target })),
         selected: visible.filter(n => n.selected).map(n => n.id),
-        playlist: s.timeline.map(c => c.nodeId),
+        playlists: playlists().map(p => ({ id: p.id, title: p.data.title, clips: p.data.clips.map(c => c.nodeId) })),
       }
     }
     case 'create_nodes': {
@@ -100,8 +101,8 @@ export async function runClientTool(name: string, args: any, callId: string): Pr
     }
     case 'add_to_playlist': {
       const ids = resolveIds(args.node_ids).filter(id => ['video', 'image'].includes(s.nodes.find(n => n.id === id)?.data.kind ?? ''))
-      ids.forEach(id => s.addToTimeline(id))
-      return { added: ids }
+      const playlistId = appendToPlaylist(ids)
+      return { added: ids, playlist: playlistId }
     }
     case 'ask_user': {
       const questions = (args.questions ?? []).slice(0, 4).map((q: any) => ({ question: String(q.question ?? q), options: Array.isArray(q.options) ? q.options.map(String) : undefined }))

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api } from '../api'
+import { createPlaylist } from '../canvasOps'
 import { canConnect } from '../graph'
 import { Icon, type IconName } from '../icons'
 import { Media } from '../nodes/CanvasNodeView'
@@ -49,6 +50,7 @@ export function Toolbar({ onUpload }: { onUpload: () => void }) {
       <hr />
       <button className={commentMode ? 'on' : ''} title="Comment mode (C)" onClick={() => set({ commentMode: !commentMode })}><Icon name="bot" size={18} /><span>Comment</span></button>
       <button title="Search nodes (Ctrl+F)" onClick={() => set({ searchOpen: true })}><Icon name="list" size={18} /><span>Search</span></button>
+      <button title="New playlist (from selected clips)" onClick={() => createPlaylist(useStore.getState().nodes.filter(n => n.selected).map(n => n.id))}><Icon name="timeline" size={18} /><span>Playlist</span></button>
       <hr />
       <button className={panel === 'assets' ? 'on' : ''} title="Assets" onClick={() => toggle('assets')}><Icon name="folder" size={18} /><span>Assets</span></button>
       <button className={panel === 'agent' ? 'on' : ''} title="Agent" onClick={() => toggle('agent')}><Icon name="bot" size={18} /><span>Agent</span></button>

@@ -64,6 +64,50 @@ export async function captureFrame(input: string, at: number | 'first' | 'last',
   return out
 }
 
+export interface RenderClip { file: string; kind: 'video' | 'image'; in: number; out?: number; duration?: number }
+
+/**
+ * Merge clips into one MP4 (TapNow Playlist "Download merged video"): every clip is
+ * normalised to W×H @30fps with stereo AAC (silence added where missing), stills get
+ * a gentle zoom, then segments are concatenated without re-encoding.
+ */
+export async function renderPlaylist(clips: RenderClip[], opts: { width?: number; height?: number; signal?: AbortSignal } = {}) {
+  const W = opts.width ?? 1280, H = opts.height ?? 720, FPS = 30
+  if (!clips.length) throw new Error('Playlist is empty')
+  const fit = `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=${FPS},format=yuv420p`
+  const common = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-video_track_timescale', '15360']
+  const segs: string[] = []
+  try {
+    for (const c of clips) {
+      const seg = tmpFile('mp4')
+      if (c.kind === 'image') {
+        const dur = Math.max(0.5, (c.out ?? c.duration ?? 3) - (c.in ?? 0))
+        const frames = Math.round(dur * FPS)
+        await runFfmpeg(['-loop', '1', '-framerate', String(FPS), '-t', String(dur), '-i', c.file, '-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=r=48000:cl=stereo',
+          '-vf', `scale=${W * 2}:${H * 2}:force_original_aspect_ratio=increase,crop=${W * 2}:${H * 2},zoompan=z='1+0.08*on/${frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${FPS},setsar=1,format=yuv420p`,
+          '-map', '0:v', '-map', '1:a', ...common, '-t', String(dur), seg], opts.signal)
+      } else {
+        const info = await probe(c.file)
+        const start = Math.max(0, c.in ?? 0)
+        const end = Math.min(c.out ?? info.duration, info.duration || Infinity)
+        const dur = Math.max(0.1, end - start)
+        const audio = info.hasAudio ? ['-map', '0:a:0'] : ['-map', '1:a']
+        await runFfmpeg(['-ss', String(start), '-t', String(dur), '-i', c.file, ...(info.hasAudio ? [] : ['-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=r=48000:cl=stereo']),
+          '-vf', fit, '-map', '0:v:0', ...audio, ...common, '-t', String(dur), seg], opts.signal)
+      }
+      segs.push(seg)
+    }
+    const list = tmpFile('txt')
+    fs.writeFileSync(list, segs.map(s => `file '${s.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n'))
+    const out = tmpFile('mp4')
+    await runFfmpeg(['-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', '-movflags', '+faststart', out], opts.signal)
+    fs.rm(list, { force: true }, () => {})
+    return out
+  } finally {
+    for (const s of segs) fs.rm(s, { force: true }, () => {})
+  }
+}
+
 /** Detect cuts, then split the clip into segments (TapNow "Smart Clip"). */
 export async function smartClip(input: string, threshold = 0.3, signal?: AbortSignal) {
   const { duration } = await probe(input)

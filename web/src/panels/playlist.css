@@ -1,0 +1,35 @@
+/* ---------- playlists ---------- */
+.timeline { outline: none; }
+.timeline-head select { height: 28px; background: var(--card-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 0 8px; }
+.kbd-hint { display: inline-flex; gap: 4px; align-items: center; }
+@media (max-width: 1100px) { .kbd-hint { display: none; } }
+.export-menu { position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 30; width: 250px; background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; padding: 6px; box-shadow: 0 16px 40px rgba(0, 0, 0, .55); }
+.export-menu button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 7px 9px; border-radius: 8px; text-align: left; }
+.export-menu button:hover { background: var(--card-2); }
+.export-menu b { font-size: 12.5px; } .export-menu span { font-size: 11px; color: var(--muted); }
+
+.track { position: relative; overflow-x: auto; overflow-y: hidden; padding: 0 12px 12px; user-select: none; }
+.ruler { position: relative; height: 18px; cursor: text; }
+.ruler span { position: absolute; top: 2px; font-size: 10px; color: var(--muted); transform: translateX(-50%); pointer-events: none; }
+.ruler span::after { content: ''; position: absolute; left: 50%; top: 13px; width: 1px; height: 4px; background: var(--line-2); }
+.lane { position: relative; height: 72px; }
+.tclip { position: absolute; top: 0; height: 68px; border-radius: 9px; overflow: hidden; background: var(--card); border: 1px solid var(--line-2); cursor: grab; }
+.tclip.sel { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(124, 108, 255, .35); }
+.tclip.missing { opacity: .5; border-style: dashed; }
+.tclip-thumb { position: absolute; inset: 0; opacity: .55; }
+.tclip-thumb img, .tclip-thumb video { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.tclip-label { position: absolute; left: 8px; bottom: 6px; right: 8px; font-size: 11px; font-weight: 600; text-shadow: 0 1px 3px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.tclip .edge { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; background: rgba(167, 139, 250, .0); }
+.tclip .edge.l { left: 0; } .tclip .edge.r { right: 0; }
+.tclip:hover .edge, .tclip.sel .edge { background: rgba(167, 139, 250, .6); }
+.playhead { position: absolute; top: 0; bottom: 8px; width: 2px; margin-left: 12px; background: #ff5d6c; pointer-events: none; box-shadow: 0 0 6px rgba(255, 93, 108, .8); }
+
+.playlist-node { width: 360px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
+.playlist-node.selected { border-color: var(--accent); }
+.playlist-node.active { box-shadow: 0 0 0 2px rgba(255, 93, 108, .35); }
+.pl-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: #ff8a95; }
+.pl-head input { flex: 1; background: transparent; border: 0; outline: none; font-weight: 600; color: var(--text); }
+.pl-head .count { font-size: 11px; background: var(--card-2); border-radius: 99px; padding: 1px 8px; color: var(--text); }
+.filmstrip { display: flex; gap: 4px; min-height: 52px; align-items: center; background: #0b0b0d; border-radius: 8px; padding: 6px; overflow: hidden; }
+.filmstrip .frame { flex: none; width: 76px; height: 44px; border-radius: 5px; overflow: hidden; background: var(--card-2); }
+.filmstrip .frame img, .filmstrip .frame video { width: 100%; height: 100%; object-fit: cover; }

@@ -3,9 +3,10 @@ import '@xyflow/react/dist/style.css'
 import './agent/agent.css'
 import './canvas.css'
 import './tools/tools.css'
+import './panels/playlist.css'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { api, connectJobs } from './api'
-import { addComment, addToStack, copySelection, pasteNodes } from './canvasOps'
+import { addComment, addToStack, appendToPlaylist, copySelection, pasteNodes } from './canvasOps'
 import CanvasNodeView from './nodes/CanvasNodeView'
 import { CommentNodeView, GroupNodeView, StackGallery, StackNodeView } from './nodes/ExtraNodes'
 import { PinBar, SearchOverlay, SelectionToolbar } from './panels/CanvasChrome'
@@ -13,11 +14,12 @@ import { AddMenu, Lightbox, ProjectsModal, Toast, Toolbar, TopBar } from './pane
 import { SettingsModal } from './panels/SettingsModal'
 import { AgentPanel } from './agent/AgentPanel'
 import { AssetsPanel } from './panels/SidePanels'
-import { Timeline } from './panels/Timeline'
+import { PlaylistPanel } from './panels/PlaylistPanel'
+import { PlaylistNodeView } from './nodes/PlaylistNodeView'
 import { combinedNodes, useStore } from './store'
 import type { AnyNode, Asset, CanvasEdge, NodeKind } from './types'
 
-const nodeTypes = { canvas: CanvasNodeView, group: GroupNodeView, stack: StackNodeView, comment: CommentNodeView }
+const nodeTypes = { canvas: CanvasNodeView, group: GroupNodeView, stack: StackNodeView, comment: CommentNodeView, playlist: PlaylistNodeView }
 let booted = false
 const KEY_KIND: Record<string, NodeKind> = { t: 'text', i: 'image', v: 'video', a: 'audio' }
 const isTyping = (e: Event) => {
@@ -123,10 +125,13 @@ function Canvas() {
   const onNodeDragStop: OnNodeDrag<AnyNode> = (_e, node) => {
     const st = useStore.getState()
     if (!st.rf || node.type === 'group' || node.type === 'comment') return
-    const target = st.rf.getIntersectingNodes(node).find(n => n.type === 'stack' && n.id !== node.id)
-    if (!target) return
+    const hits = st.rf.getIntersectingNodes(node)
     const moving = [node.id, ...st.nodes.filter(n => n.selected && n.id !== node.id).map(n => n.id)]
-    addToStack(target.id, moving)
+    // dropping clips on a playlist appends them (the nodes stay where they were dropped)
+    const pl = node.type !== 'playlist' && hits.find(n => n.type === 'playlist')
+    if (pl) { appendToPlaylist(moving, pl.id); st.notify('Added to playlist'); return }
+    const target = hits.find(n => n.type === 'stack' && n.id !== node.id)
+    if (target) addToStack(target.id, moving)
   }
 
   const onDrop = (e: React.DragEvent) => {
@@ -181,7 +186,7 @@ function Canvas() {
         {panel === 'agent' && <AgentPanel />}
         {panel === 'assets' && <AssetsPanel />}
       </div>
-      <Timeline />
+      <PlaylistPanel />
       <input ref={fileInput} type="file" multiple hidden accept="image/*,video/*,audio/*"
         onChange={e => { uploadFiles([...(e.target.files ?? [])]); e.target.value = '' }} />
       <ProjectsModal />

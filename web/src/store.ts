@@ -2,7 +2,7 @@ import { addEdge, applyEdgeChanges, applyNodeChanges, type Connection, type Edge
 import { create } from 'zustand'
 import { api } from './api'
 import { absolutize, ancestors, canConnect, expandMentions, layoutBatch, nodeValue, resolveInputs, missingUpstream, topoOrder, upstreamOf } from './graph'
-import { placeResults } from './canvasOps'
+import { appendToPlaylist, placeResults } from './canvasOps'
 import type { AnyNode, Asset, CanvasEdge, CanvasNode, CanvasNodeData, ExtraNode, Job, ModelInfo, NodeKind, NodeParams, Output, StackNode, TimelineClip } from './types'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
@@ -40,6 +40,8 @@ interface State {
   searchOpen: boolean
   /** stack whose gallery is open */
   openStack?: string
+  /** playlist shown in the bottom editor */
+  activePlaylist?: string
   panel: Panel
   settingsOpen: boolean
   projectsOpen: boolean
@@ -119,7 +121,15 @@ export const useStore = create<State & Actions>((set, get) => ({
     // never restore a transient running state from disk
     const nodes = p.nodes.map(n => n.data.status === 'queued' || n.data.status === 'running'
       ? { ...n, data: { ...n.data, status: 'idle' as const, progress: undefined, jobId: undefined } } : n)
-    set({ projectId: p.id, projectName: p.name, nodes, extras: p.extras ?? [], edges: p.edges, timeline: p.timeline ?? [], past: [], future: [], dirty: false, projectsOpen: false, openStack: undefined })
+    let extras: ExtraNode[] = p.extras ?? []
+    if (p.timeline?.length && !extras.some(e => e.type === 'playlist')) {
+      const firstClip = nodes.find(n => n.id === p.timeline[0].nodeId)
+      extras = [...extras, {
+        id: `playlist-${uid()}`, type: 'playlist', position: firstClip ? { x: firstClip.position.x, y: Math.max(...nodes.map(n => n.position.y)) + 420 } : { x: 0, y: 0 },
+        data: { title: 'Playlist', clips: p.timeline.map(c => ({ id: c.id, nodeId: c.nodeId, in: 0 })) },
+      }]
+    }
+    set({ projectId: p.id, projectName: p.name, nodes, extras, edges: p.edges, timeline: [], past: [], future: [], dirty: false, projectsOpen: false, openStack: undefined, activePlaylist: extras.find(e => e.type === 'playlist')?.id })
     localStorage.setItem('taplocal:project', p.id)
     requestAnimationFrame(() => {
       const rf = get().rf
@@ -188,6 +198,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     // drop deleted members from surviving stacks; an empty stack dissolves
     extras = extras.map(x => (x.type === 'stack' && x.data.members.some(m => gone.has(m)) ? { ...x, data: { ...x.data, members: x.data.members.filter(m => !gone.has(m)) } } : x))
       .filter(x => x.type !== 'stack' || x.data.members.length > 0)
+      .map(x => (x.type === 'playlist' && x.data.clips.some(c => gone.has(c.nodeId)) ? { ...x, data: { ...x.data, clips: x.data.clips.filter(c => !gone.has(c.nodeId)) } } : x))
     const alive = new Set(nodes.map(n => n.id))
     set({
       nodes, extras,
@@ -417,7 +428,6 @@ export const useStore = create<State & Actions>((set, get) => ({
         status: 'done', progress: 1, jobId: undefined, message: undefined, outputs, active: outputs.length - 1,
         ...(r.text !== undefined ? { prompt: r.text } : {}),
       })
-      if (n.data.kind === 'video' && !get().timeline.some(c => c.nodeId === n.id)) get().addToTimeline(n.id)
       waiters.get(n.id)?.(true)
     } else {
       get().updateData(n.id, { status: job.status === 'error' ? 'error' : 'idle', error: job.error, jobId: undefined, progress: undefined })
@@ -427,7 +437,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   },
 
   addToTimeline(nodeId) {
-    set(s => ({ timeline: [...s.timeline, { id: uid(), nodeId }], dirty: true }))
+    appendToPlaylist([nodeId])
   },
   moveClip(id, dir) {
     set(s => {

@@ -3,7 +3,7 @@
  * preview and WebM export (MediaRecorder on the canvas stream + mixed audio),
  * so no ffmpeg is required.
  */
-export interface SeqClip { url: string; kind: 'image' | 'video'; mime?: string; duration: number }
+export interface SeqClip { url: string; kind: 'image' | 'video'; mime?: string; duration: number; in?: number; out?: number }
 
 const isRealVideo = (c: SeqClip) => c.kind === 'video' && !c.mime?.includes('svg')
 // rAF stops in hidden tabs; fall back to timers so an export keeps going
@@ -46,12 +46,16 @@ export async function playSequence(
         const v = document.createElement('video')
         v.src = c.url; v.crossOrigin = 'anonymous'; v.playsInline = true
         await new Promise<void>((res, rej) => { v.onloadeddata = () => res(); v.onerror = () => rej(new Error(`Cannot load ${c.url}`)) })
+        // honour playlist in/out points
+        if (c.in) { v.currentTime = c.in; await new Promise(r => { v.onseeked = r }) }
+        const stopAt = c.out ?? Infinity
+        const span = Math.max(0.1, Math.min(stopAt, v.duration || stopAt) - (c.in ?? 0))
         if (withAudio || !opts.record) audio.createMediaElementSource(v).connect(out)
         else v.muted = true
         await v.play()
-        while (!aborted() && !v.ended) {
+        while (!aborted() && !v.ended && v.currentTime < stopAt) {
           drawCover(ctx, v, v.videoWidth, v.videoHeight)
-          opts.onProgress?.(i, v.currentTime / (v.duration || 1))
+          opts.onProgress?.(i, (v.currentTime - (c.in ?? 0)) / span)
           await nextFrame()
         }
         v.pause()
@@ -59,7 +63,7 @@ export async function playSequence(
         const img = new Image()
         img.src = c.url
         await img.decode()
-        const t0 = performance.now(), ms = c.duration * 1000
+        const t0 = performance.now(), ms = Math.max(0.2, (c.out ?? c.duration) - (c.in ?? 0)) * 1000
         for (let t = 0; !aborted() && t < 1; t = (performance.now() - t0) / ms) {
           // gentle Ken Burns so stills and mock clips feel alive
           drawCover(ctx, img, img.naturalWidth || canvas.width, img.naturalHeight || canvas.height, 1 + 0.08 * t)

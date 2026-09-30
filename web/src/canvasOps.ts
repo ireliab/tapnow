@@ -1,7 +1,8 @@
 import type { XYPosition } from '@xyflow/react'
 import { nodeValue } from './graph'
 import { combinedNodes, useStore, type ResultMode } from './store'
-import type { AnyNode, CanvasEdge, CanvasNode, CommentData, ExtraNode, GroupNode, Output, StackNode } from './types'
+import { newClip } from './playlist'
+import type { AnyNode, CanvasEdge, CanvasNode, CommentData, ExtraNode, GroupNode, Output, PlaylistClip, PlaylistNode, StackNode } from './types'
 
 /**
  * Canvas organisation actions (TapNow "Organize your canvas" / "Stack nodes" / groups /
@@ -202,4 +203,39 @@ export async function downloadZip(ids: string[], name = S().projectName) {
   a.href = url; a.download = `${name.replace(/[^\w .-]+/g, '_') || 'taplocal'}.zip`; a.click()
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
   S().notify(`Downloading ${files.length} file${files.length > 1 ? 's' : ''}`)
+}
+
+// ---------- playlists ----------
+const playable = (ids: string[]) => ids.filter(id => ['video', 'image'].includes(S().nodes.find(n => n.id === id)?.data.kind ?? ''))
+export const playlists = () => S().extras.filter((e): e is PlaylistNode => e.type === 'playlist')
+
+/** New Playlist node from nodes (ordered left→right, top→bottom), placed below them. */
+export function createPlaylist(ids: string[], title?: string) {
+  const s = S()
+  const nodes = s.nodes.filter(n => playable(ids).includes(n.id)).map(n => ({ n, p: absPos(n) }))
+    .sort((a, b) => a.p.x - b.p.x || a.p.y - b.p.y)
+  const below = nodes.length ? { x: Math.min(...nodes.map(x => x.p.x)), y: Math.max(...nodes.map(x => x.p.y + size(x.n).h)) + 80 }
+    : s.rf?.screenToFlowPosition({ x: window.innerWidth / 2 - 180, y: window.innerHeight / 2 - 80 }) ?? { x: 0, y: 0 }
+  const pl: PlaylistNode = {
+    id: `playlist-${uid()}`, type: 'playlist', position: below, selected: true,
+    data: { title: title ?? `Playlist ${playlists().length + 1}`, clips: nodes.map(x => newClip(x.n.id)) },
+  }
+  commit({ extras: [...s.extras.map(e => ({ ...e, selected: false })), pl], nodes: s.nodes.map(n => ({ ...n, selected: false })) })
+  useStore.setState({ activePlaylist: pl.id })
+  return pl.id
+}
+
+/** Append clips to a playlist (the active or first one; created when there is none). */
+export function appendToPlaylist(ids: string[], playlistId?: string) {
+  const ok = playable(ids)
+  if (!ok.length) return undefined
+  const target = playlists().find(p => p.id === (playlistId ?? S().activePlaylist)) ?? playlists()[0]
+  if (!target) return createPlaylist(ok)
+  setClips(target.id, [...target.data.clips, ...ok.map(newClip)])
+  useStore.setState({ activePlaylist: target.id })
+  return target.id
+}
+
+export function setClips(playlistId: string, clips: PlaylistClip[]) {
+  useStore.setState(s => ({ extras: s.extras.map(e => (e.id === playlistId && e.type === 'playlist' ? { ...e, data: { ...e.data, clips } } : e)), dirty: true }))
 }

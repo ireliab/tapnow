@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { captureFrame, parseProbe, parseSceneTimes, probe, runFfmpeg, smartClip, tmpFile, trim } from '../src/ffmpeg'
+import { captureFrame, parseProbe, parseSceneTimes, probe, renderPlaylist, runFfmpeg, smartClip, tmpFile, trim } from '../src/ffmpeg'
 
 describe('ffmpeg output parsing', () => {
   it('reads duration, size and audio presence', () => {
@@ -43,5 +43,17 @@ describe('ffmpeg operations (real binary)', () => {
     const { segments, cuts } = await smartClip(clip)
     expect(cuts.length).toBe(2)
     expect(segments).toHaveLength(3)
+  }, 120_000)
+  it('renders a playlist of a trimmed video + a still into one mp4 with audio', async () => {
+    const still = await captureFrame(clip, 'first')
+    const out = await renderPlaylist([
+      { file: clip, kind: 'video', in: 0.5, out: 2 },
+      { file: still, kind: 'image', in: 0, duration: 1.5 },
+    ], { width: 320, height: 180 })
+    const p = await probe(out)
+    expect(p.width).toBe(320)
+    expect(p.hasAudio).toBe(true)
+    expect(p.duration).toBeGreaterThan(2.7)
+    expect(p.duration).toBeLessThan(3.4)
   }, 120_000)
 })

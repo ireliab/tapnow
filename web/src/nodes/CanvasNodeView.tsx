@@ -33,7 +33,7 @@ const ASPECT: Record<string, string> = { '1:1': '1 / 1', '16:9': '16 / 9', '9:16
 
 function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
   const { updateData, removeNode, duplicate, addToTimeline, set, projectId, notify } = useStore.getState()
-  const inTimeline = useStore(s => s.timeline.some(c => c.nodeId === id))
+  const inTimeline = useStore(s => s.extras.some(e => e.type === 'playlist' && e.data.clips.some(c => c.nodeId === id)))
   const zoom = useFlow(s => s.transform[2])
   const fileRef = useRef<HTMLInputElement>(null)
   const out = activeOutput({ data } as CanvasNode)
@@ -66,7 +66,7 @@ function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
           {out?.url && <button title="View" onClick={() => set({ lightbox: out })}><Icon name="expand" /></button>}
           {out?.url && <a title="Download" href={out.url} download><Icon name="download" /></a>}
           {(data.kind === 'video' || data.kind === 'image') && (
-            <button title={inTimeline ? 'In timeline' : 'Add to timeline'} disabled={inTimeline} onClick={() => addToTimeline(id)}><Icon name={inTimeline ? 'check' : 'timeline'} /></button>
+            <button title={inTimeline ? 'In a playlist' : 'Add to playlist'} disabled={inTimeline} onClick={() => addToTimeline(id)}><Icon name={inTimeline ? 'check' : 'timeline'} /></button>
           )}
           <button title="Duplicate (Ctrl+D)" onClick={() => duplicate([id])}><Icon name="copy" /></button>
           <button title="Delete" onClick={() => removeNode(id)}><Icon name="trash" /></button>

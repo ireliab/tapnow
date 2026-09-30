@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import express from 'express'
-import { captureFrame, probe, smartClip, trim } from './ffmpeg.js'
+import { captureFrame, probe, renderPlaylist, smartClip, trim } from './ffmpeg.js'
 import { addAsset, fileFromUrl, mimeOfFile, saveBytes, type Asset } from './store.js'
 
 /** Deterministic media operations that run locally through ffmpeg (no model, no cost). */
@@ -20,6 +20,21 @@ function source(url: unknown) {
   if (mimeOfFile(file) === 'image/svg+xml') throw new Error('Mock (SVG) clips cannot be processed by ffmpeg')
   return file
 }
+
+/** POST {clips: [{url, kind, in, out, duration}], width, height} → merged MP4 asset. */
+opsRouter.post('/playlist', async (req, res) => {
+  try {
+    const { clips = [], width, height, projectId, name } = req.body ?? {}
+    const ac = new AbortController()
+    res.on('close', () => { if (!res.writableEnded) ac.abort() })
+    const list = (clips as any[]).map(c => ({ file: source(c.url), kind: c.kind === 'image' ? 'image' as const : 'video' as const, in: Number(c.in) || 0, out: c.out === undefined ? undefined : Number(c.out), duration: Number(c.duration) || undefined }))
+    const W = Math.min(3840, Math.max(160, Math.round((Number(width) || 1280) / 2) * 2)), H = Math.min(3840, Math.max(160, Math.round((Number(height) || 720) / 2) * 2))
+    const out = await renderPlaylist(list, { width: W, height: H, signal: ac.signal })
+    res.json({ asset: keep(out, projectId, String(name ?? 'playlist')) })
+  } catch (e: any) {
+    if (!res.headersSent) res.status(400).json({ error: String(e?.message ?? e) })
+  }
+})
 
 opsRouter.post('/video', async (req, res) => {
   try {

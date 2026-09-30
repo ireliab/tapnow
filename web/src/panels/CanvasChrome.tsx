@@ -2,7 +2,7 @@ import { NodeToolbar, Position } from '@xyflow/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgent } from '../agent/agentStore'
-import { createGroup, downloadZip, focusNode, PIN_COLORS, setPin, stackNodes } from '../canvasOps'
+import { createGroup, createPlaylist, downloadZip, focusNode, PIN_COLORS, setPin, stackNodes } from '../canvasOps'
 import { Icon, type IconName } from '../icons'
 import { KIND_LABEL, useStore } from '../store'
 import type { NodeKind } from '../types'
@@ -35,7 +35,7 @@ export function SelectionToolbar() {
       {selNodes.length > 1 && <button title="Stack" onClick={() => stackNodes(ids)}><Icon name="copy" /></button>}
       <button title="Group" onClick={() => createGroup(ids)}><Icon name="grid" /></button>
       {media.some(n => n.data.kind === 'video' || n.data.kind === 'image') && (
-        <button title="Add to playlist" onClick={() => { media.filter(n => n.data.kind === 'video' || n.data.kind === 'image').forEach(n => s.addToTimeline(n.id)); s.notify('Added to playlist') }}><Icon name="timeline" /></button>
+        <button title="Create playlist" onClick={() => createPlaylist(media.map(n => n.id))}><Icon name="timeline" /></button>
       )}
       <button title="Download media (zip)" onClick={() => downloadZip(ids)}><Icon name="download" /></button>
       <button title="Send to Agent as references" onClick={toAgent}><Icon name="bot" /></button>
