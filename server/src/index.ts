@@ -8,6 +8,7 @@ import { WebSocketServer } from 'ws'
 import { uniqueNames, zip } from './zip.js'
 import { opsRouter } from './ops.js'
 import { libraryRouter } from './library.js'
+import { mcpRouter, setMcpBroadcast } from './mcp.js'
 import { agentRouter, skillsRouter } from './agent/routes.js'
 import { cancel, enqueue, listJobs, onJobUpdate } from './jobs.js'
 import { catalog } from './providers/index.js'
@@ -84,6 +85,9 @@ app.post('/api/generate', wrap(async (req, res) => {
 app.get('/api/jobs', (_req, res) => { res.json(listJobs()) })
 app.post('/api/jobs/:id/cancel', (req, res) => { cancel(req.params.id); res.json({ ok: true }) })
 
+// MCP server for other agents (Claude Code, Codex, …)
+app.use('/mcp', mcpRouter)
+
 // library, elements, templates, project clone/export/import
 app.use('/api', libraryRouter)
 
@@ -103,9 +107,11 @@ if (fs.existsSync(dist)) {
 
 const server = http.createServer(app)
 const wss = new WebSocketServer({ server, path: '/ws' })
-onJobUpdate(job => {
-  const msg = JSON.stringify({ type: 'job', job })
+const broadcast = (m: unknown) => {
+  const msg = JSON.stringify(m)
   for (const c of wss.clients) if (c.readyState === c.OPEN) c.send(msg)
-})
+}
+onJobUpdate(job => broadcast({ type: 'job', job }))
+setMcpBroadcast(broadcast)
 
 server.listen(PORT, HOST, () => console.log(`TapLocal server on http://${HOST}:${PORT}`))

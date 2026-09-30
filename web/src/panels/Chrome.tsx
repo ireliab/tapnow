@@ -25,9 +25,16 @@ export function TopBar() {
       {runningAll
         ? <button className="btn danger" onClick={stopAll}><Icon name="stop" size={14} /> Stop</button>
         : <button className="btn" onClick={() => runAll(true)} title="Generate every node without an output, in dependency order"><Icon name="play" size={14} /> Run all</button>}
+      <ListeningBadge />
+      <button className="icon-btn" title="Keyboard shortcuts (?)" onClick={() => set({ shortcutsOpen: true })}><b>?</b></button>
       <button className="icon-btn" title="Settings" onClick={() => set({ settingsOpen: true })}><Icon name="settings" /></button>
     </header>
   )
+}
+
+function ListeningBadge() {
+  const on = useStore(s => s.listening)
+  return on ? <span className="listening"><i /> Listening — release V</span> : null
 }
 
 const TOOLS: Array<{ kind: NodeKind; icon: IconName; key: string }> = [

@@ -15,6 +15,7 @@ import { CommentNodeView, GroupNodeView, StackGallery, StackNodeView } from './n
 import { PinBar, SearchOverlay, SelectionToolbar } from './panels/CanvasChrome'
 import { AddMenu, Lightbox, ProjectsModal, Toast, Toolbar, TopBar } from './panels/Chrome'
 import { SettingsModal } from './panels/SettingsModal'
+import { ShortcutsModal, startVoice, stopVoice } from './panels/Shortcuts'
 import { AgentPanel } from './agent/AgentPanel'
 import { LibraryPanel } from './panels/LibraryPanel'
 import { PlaylistPanel } from './panels/PlaylistPanel'
@@ -24,7 +25,7 @@ import type { AnyNode, Asset, CanvasEdge, NodeKind } from './types'
 
 const nodeTypes = { canvas: CanvasNodeView, group: GroupNodeView, stack: StackNodeView, comment: CommentNodeView, playlist: PlaylistNodeView }
 let booted = false
-const KEY_KIND: Record<string, NodeKind> = { t: 'text', i: 'image', v: 'video', a: 'audio' }
+const KEY_KIND: Record<string, NodeKind> = { t: 'text', i: 'image', a: 'audio' }
 const isTyping = (e: Event) => {
   const t = e.target as HTMLElement
   return t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)
@@ -53,7 +54,7 @@ function Canvas() {
       const linked = new URLSearchParams(location.search).get('project')
       s.openProject(linked ?? localStorage.getItem('taplocal:project') ?? undefined).catch(() => s.openProject())
     }
-    return connectJobs(job => useStore.getState().handleJob(job))
+    return connectJobs(job => useStore.getState().handleJob(job), (pid, nodes) => useStore.getState().mergeServerNodes(pid, nodes))
   }, [])
 
   // autosave
@@ -87,10 +88,28 @@ function Canvas() {
       if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); st.save(); return }
       if (mod && e.key.toLowerCase() === 'j') { e.preventDefault(); st.set({ panel: st.panel === 'agent' ? null : 'agent' }); return }
       if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); st.set({ searchOpen: true }); return }
+      if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); st.rf?.zoomIn({ duration: 150 }); return }
+      if (mod && e.key === '-') { e.preventDefault(); st.rf?.zoomOut({ duration: 150 }); return }
+      // Point to Edit: hand the selection to the Agent
+      if (mod && e.key.toLowerCase() === 'i' && !isTyping(e)) {
+        e.preventDefault()
+        const sel = st.nodes.filter(n => n.selected && !n.hidden)
+        const a = useAgent.getState()
+        sel.forEach(n => a.addRef({ nodeId: n.id, title: n.data.title, kind: n.data.kind }))
+        a.set({ tab: 'chat', draft: { ...useAgent.getState().draft, text: `${useAgent.getState().draft.text}${sel.map(n => ` @${n.data.title}`).join('')} `.trimStart() } })
+        a.focusComposer()
+        return
+      }
       if (isTyping(e) || st.readOnly) return
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? st.redo() : st.undo() }
       else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); st.redo() }
       else if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); st.duplicate(st.nodes.filter(n => n.selected).map(n => n.id)) }
+      else if (!mod && !e.altKey && e.key.toLowerCase() === 'v') {
+        // tap V = video node, hold V = voice input for the Agent
+        if (e.repeat) return
+        vDown = setTimeout(() => { vDown = undefined; voiceOn = startVoice() }, 350)
+      }
+      else if (!mod && e.key === '?') st.set({ shortcutsOpen: true })
       else if (!mod && !e.altKey && KEY_KIND[e.key.toLowerCase()]) st.addNode(KEY_KIND[e.key.toLowerCase()])
       else if (!mod && !e.altKey && e.key.toLowerCase() === 'c') st.set({ commentMode: !st.commentMode })
       else if (e.key === 'Escape') st.set({ addMenu: null, commentMode: false })
@@ -108,10 +127,18 @@ function Canvas() {
       const files = [...(e.clipboardData?.files ?? [])]
       if (files.length) { e.preventDefault(); uploadFiles(files) }
     }
+    let vDown: ReturnType<typeof setTimeout> | undefined
+    let voiceOn = false
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'v') return
+      if (vDown) { clearTimeout(vDown); vDown = undefined; if (!isTyping(e) && !useStore.getState().readOnly) useStore.getState().addNode('video') }
+      else if (voiceOn) { voiceOn = false; stopVoice() }
+    }
     window.addEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKeyUp)
     window.addEventListener('copy', onCopy)
     window.addEventListener('paste', onPaste)
-    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('copy', onCopy); window.removeEventListener('paste', onPaste) }
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('copy', onCopy); window.removeEventListener('paste', onPaste) }
   }, [uploadFiles])
 
   const openAddMenu = (clientX: number, clientY: number, fromNodeId?: string) => {
@@ -199,6 +226,7 @@ function Canvas() {
       <ProjectsModal />
       <SettingsModal />
       <StackGallery />
+      <ShortcutsModal />
       <SearchOverlay />
       <Lightbox />
       <Toast />

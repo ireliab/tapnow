@@ -15,8 +15,10 @@ const jobs = new Map<string, Job>()
 const controllers = new Map<string, AbortController>()
 const queue: Array<{ job: Job; req: GenRequest }> = []
 let running = 0
-let emit: (job: Job) => void = () => {}
-export const onJobUpdate = (fn: (job: Job) => void) => { emit = fn }
+const listeners = new Set<(job: Job) => void>()
+const emit = (job: Job) => { for (const fn of listeners) fn(job) }
+export const onJobUpdate = (fn: (job: Job) => void) => { listeners.add(fn); return () => listeners.delete(fn) }
+export const getJob = (id: string) => jobs.get(id)
 
 export const listJobs = () => [...jobs.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, 100)
 

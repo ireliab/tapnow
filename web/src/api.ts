@@ -54,13 +54,17 @@ export const api = {
   },
 }
 
-/** Job updates over WebSocket, with auto-reconnect. */
-export function connectJobs(onJob: (job: Job) => void) {
+/** Job updates (and agent-made canvas changes) over WebSocket, with auto-reconnect. */
+export function connectJobs(onJob: (job: Job) => void, onProjectChanged?: (projectId: string, nodes: any[]) => void) {
   let ws: WebSocket | undefined
   let closed = false
   const open = () => {
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`)
-    ws.onmessage = e => { const m = JSON.parse(e.data); if (m.type === 'job') onJob(m.job) }
+    ws.onmessage = e => {
+      const m = JSON.parse(e.data)
+      if (m.type === 'job') onJob(m.job)
+      else if (m.type === 'project-changed') onProjectChanged?.(m.projectId, m.nodes ?? [])
+    }
     ws.onclose = () => { if (!closed) setTimeout(open, 1000) }
   }
   open()

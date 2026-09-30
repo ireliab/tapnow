@@ -46,6 +46,9 @@ interface State {
   elements: ElementItem[]
   /** shared view-only link (?view=1): nothing can be edited */
   readOnly: boolean
+  shortcutsOpen: boolean
+  /** hold-V voice input is recording */
+  listening: boolean
   panel: Panel
   settingsOpen: boolean
   projectsOpen: boolean
@@ -86,6 +89,7 @@ interface Actions {
   addNodesBatch: (specs: BatchNode[], edges: Array<{ from: string; to: string }>) => { created: Record<string, string>; skipped: string[] }
   stopAll: () => void
   handleJob: (job: Job) => void
+  mergeServerNodes: (projectId: string, nodes: CanvasNode[]) => void
   addToTimeline: (nodeId: string) => void
   moveClip: (id: string, dir: -1 | 1) => void
   removeClip: (id: string) => void
@@ -108,7 +112,7 @@ let stopRequested = false
 export const useStore = create<State & Actions>((set, get) => ({
   projectName: 'Untitled',
   nodes: [], extras: [], edges: [], timeline: [], models: [],
-  canvasSettings: loadCanvasSettings(), commentMode: false, searchOpen: false, elements: [],
+  canvasSettings: loadCanvasSettings(), commentMode: false, searchOpen: false, elements: [], shortcutsOpen: false, listening: false,
   readOnly: typeof location !== 'undefined' && new URLSearchParams(location.search).get('view') === '1',
   panel: null, settingsOpen: false, projectsOpen: false, addMenu: null,
   dirty: false, saving: false, runningAll: false, past: [], future: [],
@@ -443,6 +447,23 @@ export const useStore = create<State & Actions>((set, get) => ({
       if (job.status === 'error') get().notify(`${n.data.title}: ${job.error}`, 'error')
       waiters.get(n.id)?.(false)
     }
+  },
+
+  /** Nodes created outside the browser (MCP agents) appear live on the open canvas. */
+  mergeServerNodes(projectId, incoming) {
+    if (projectId !== get().projectId || !incoming.length) return
+    set(s => {
+      const byId = new Map(s.nodes.map(n => [n.id, n]))
+      const nodes = s.nodes.map(n => {
+        const inc = incoming.find(x => x.id === n.id)
+        // keep local state while the browser itself tracks the job
+        // the server's copy wins; dropping a finished job's id stops handleJob appending the same output twice
+        return inc && !(n.data.status === 'running' && inc.data.status !== 'done') ? { ...n, data: { ...n.data, ...inc.data, ...(inc.data.jobId ? {} : { jobId: undefined }) } } : n
+      })
+      const added = incoming.filter(n => !byId.has(n.id)).map(n => ({ ...n, selected: false }))
+      return { nodes: [...nodes, ...added], dirty: true }
+    })
+    if (incoming.some(n => n.data.status === 'queued')) get().notify(`An agent added "${incoming[0].data.title}" to this canvas`)
   },
 
   addToTimeline(nodeId) {

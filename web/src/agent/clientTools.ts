@@ -47,6 +47,8 @@ export async function runClientTool(name: string, args: any, callId: string): Pr
         edges: s.edges.map(e => ({ from: e.source, to: e.target })),
         selected: visible.filter(n => n.selected).map(n => n.id),
         playlists: playlists().map(p => ({ id: p.id, title: p.data.title, clips: p.data.clips.map(c => c.nodeId) })),
+        // library elements can be used in any prompt as @Name
+        elements: s.elements.map(e => ({ name: e.name, kind: e.kind, description: e.description, references: e.refs.length })),
       }
     }
     case 'create_nodes': {
