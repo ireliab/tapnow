@@ -2,6 +2,7 @@ import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, ReactFlowP
 import '@xyflow/react/dist/style.css'
 import './agent/agent.css'
 import './canvas.css'
+import './tools/tools.css'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { api, connectJobs } from './api'
 import { addComment, addToStack, copySelection, pasteNodes } from './canvasOps'

@@ -25,6 +25,9 @@ export async function enqueue(req: GenRequest, meta: { nodeId: string; projectId
   if (!model) throw new Error(`Unknown model: ${req.model}`)
   if (!model.available) throw new Error(model.reason)
   if (model.requiresImage && !req.inputs.images.length) throw new Error(`${model.name} needs an image input — connect an image node`)
+  for (const need of model.needs ?? []) {
+    if (!(need === 'video' ? req.inputs.videos : req.inputs.audios).length) throw new Error(`${model.name} needs a connected ${need} node`)
+  }
   const job: Job = { id: newId(), ...meta, model: req.model, status: 'queued', progress: 0, createdAt: Date.now() }
   jobs.set(job.id, job)
   queue.push({ job, req })

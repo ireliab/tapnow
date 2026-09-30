@@ -85,12 +85,15 @@ interface Actions {
 }
 
 /** Default model for a node that has image inputs: prefer one that accepts reference images / first frames. */
+// generation models only — editing tools (upscale, cutout, …) and lip-sync are never a node's default
+const plain = (m: ModelInfo, kind: NodeKind) => m.kind === kind && m.available && !m.tool && !m.needs?.length && (kind !== 'audio' || !m.audioMode || m.audioMode === 'speech')
+
 export const defaultModelWithImages = (models: ModelInfo[], kind: NodeKind) =>
-  (models.find(m => m.kind === kind && m.available && m.provider !== 'mock' && m.maxImages > 0)
-    ?? models.find(m => m.kind === kind && m.available && m.maxImages > 0))?.id ?? defaultModel(models, kind)
+  (models.find(m => plain(m, kind) && m.provider !== 'mock' && m.maxImages > 0)
+    ?? models.find(m => plain(m, kind) && m.maxImages > 0))?.id ?? defaultModel(models, kind)
 
 export const defaultModel = (models: ModelInfo[], kind: NodeKind) =>
-  (models.find(m => m.kind === kind && m.available && m.provider !== 'mock') ?? models.find(m => m.kind === kind && m.available))?.id ?? `mock-${kind}`
+  (models.find(m => plain(m, kind) && m.provider !== 'mock' && !m.requiresImage) ?? models.find(m => plain(m, kind)))?.id ?? `mock-${kind}`
 
 const waiters = new Map<string, (ok: boolean) => void>()
 let stopRequested = false

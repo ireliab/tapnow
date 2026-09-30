@@ -15,14 +15,20 @@ const BUILTIN: ModelInfo[] = [
   { id: 'mock-text', name: 'Mock Writer', provider: 'mock', kind: 'text', maxImages: 0 },
   { id: 'mock-image', name: 'Mock Image', provider: 'mock', kind: 'image', maxImages: 4, aspects: IMG_AR },
   { id: 'mock-video', name: 'Mock Video', provider: 'mock', kind: 'video', maxImages: 2, aspects: VID_AR, durations: [3, 5, 10] },
-  { id: 'mock-audio', name: 'Mock Voice', provider: 'mock', kind: 'audio', maxImages: 0 },
+  { id: 'mock-audio', name: 'Mock Voice', provider: 'mock', kind: 'audio', maxImages: 0, audioMode: 'speech' },
+  { id: 'mock-music', name: 'Mock Music', provider: 'mock', kind: 'audio', maxImages: 0, audioMode: 'music', durations: [10, 20, 30] },
+  { id: 'mock-sfx', name: 'Mock Sound FX', provider: 'mock', kind: 'audio', maxImages: 0, audioMode: 'sfx', durations: [2, 5, 10] },
+  { id: 'mock-upscale', name: 'Mock Enhance', provider: 'mock', kind: 'image', maxImages: 1, requiresImage: true, tool: 'upscale' },
+  { id: 'mock-cutout', name: 'Mock Cutout', provider: 'mock', kind: 'image', maxImages: 1, requiresImage: true, tool: 'cutout' },
+  { id: 'mock-inpaint', name: 'Mock Inpaint', provider: 'mock', kind: 'image', maxImages: 1, requiresImage: true, tool: 'inpaint' },
+  { id: 'mock-relight', name: 'Mock Relight', provider: 'mock', kind: 'image', maxImages: 1, requiresImage: true, tool: 'relight' },
   // local
   { id: 'llm', name: 'Local LLM (OpenAI-compatible)', provider: 'llm', kind: 'text', maxImages: 0 },
   { id: 'comfy-image', name: 'ComfyUI Image', provider: 'comfyui', kind: 'image', maxImages: 2, aspects: IMG_AR },
   { id: 'comfy-video', name: 'ComfyUI Video', provider: 'comfyui', kind: 'video', maxImages: 2, aspects: VID_AR, durations: [3, 5, 8] },
   // cloud: OpenAI
   { id: 'gpt-image-1', name: 'GPT Image', provider: 'openai', kind: 'image', maxImages: 4, aspects: ['1:1', '16:9', '9:16'], extra: { remote: 'gpt-image-1' } },
-  { id: 'openai-tts', name: 'OpenAI TTS', provider: 'openai', kind: 'audio', maxImages: 0, extra: { remote: 'tts-1' } },
+  { id: 'openai-tts', name: 'OpenAI TTS', provider: 'openai', kind: 'audio', maxImages: 0, audioMode: 'speech', extra: { remote: 'tts-1' } },
   // cloud: fal.ai
   { id: 'flux-dev', name: 'FLUX.1 dev', provider: 'fal', kind: 'image', maxImages: 0, aspects: IMG_AR, extra: { app: 'fal-ai/flux/dev', sizeField: 'image_size' } },
   { id: 'flux-kontext', name: 'FLUX Kontext (edit)', provider: 'fal', kind: 'image', maxImages: 1, requiresImage: true, aspects: IMG_AR, extra: { app: 'fal-ai/flux-pro/kontext' } },
@@ -31,6 +37,16 @@ const BUILTIN: ModelInfo[] = [
   { id: 'kling-i2v', name: 'Kling 2.1 · I2V', provider: 'fal', kind: 'video', maxImages: 2, requiresImage: true, durations: [5, 10], extra: { app: 'fal-ai/kling-video/v2.1/pro/image-to-video', tailField: 'tail_image_url' } },
   { id: 'veo3', name: 'Veo 3', provider: 'fal', kind: 'video', maxImages: 0, aspects: VID_AR, durations: [8], extra: { app: 'fal-ai/veo3', durationSuffix: 's' } },
   { id: 'hailuo-i2v', name: 'Hailuo 02 · I2V', provider: 'fal', kind: 'video', maxImages: 1, requiresImage: true, durations: [6, 10], extra: { app: 'fal-ai/minimax/hailuo-02/standard/image-to-video' } },
+  { id: 'sync-lipsync', name: 'Sync Lip-sync (video + audio)', provider: 'fal', kind: 'video', maxImages: 0, needs: ['video', 'audio'], extra: { app: 'fal-ai/sync-lipsync' } },
+  // fal.ai editing tools
+  { id: 'clarity-upscaler', name: 'Clarity Upscaler', provider: 'fal', kind: 'image', maxImages: 1, requiresImage: true, tool: 'upscale', extra: { app: 'fal-ai/clarity-upscaler' } },
+  { id: 'birefnet', name: 'BiRefNet Cutout', provider: 'fal', kind: 'image', maxImages: 1, requiresImage: true, tool: 'cutout', extra: { app: 'fal-ai/birefnet' } },
+  { id: 'flux-fill', name: 'FLUX Fill (inpaint)', provider: 'fal', kind: 'image', maxImages: 1, requiresImage: true, tool: 'inpaint', extra: { app: 'fal-ai/flux-pro/v1/fill' } },
+  { id: 'iclight', name: 'IC-Light v2 (relight)', provider: 'fal', kind: 'image', maxImages: 1, requiresImage: true, tool: 'relight', extra: { app: 'fal-ai/iclight-v2' } },
+  // fal.ai audio
+  { id: 'elevenlabs-tts', name: 'ElevenLabs TTS', provider: 'fal', kind: 'audio', maxImages: 0, audioMode: 'speech', extra: { app: 'fal-ai/elevenlabs/tts/multilingual-v2', textField: 'text' } },
+  { id: 'elevenlabs-sfx', name: 'ElevenLabs Sound FX', provider: 'fal', kind: 'audio', maxImages: 0, audioMode: 'sfx', durations: [2, 5, 10], extra: { app: 'fal-ai/elevenlabs/sound-effects', textField: 'text', durationField: 'duration_seconds' } },
+  { id: 'stable-audio', name: 'Stable Audio (music)', provider: 'fal', kind: 'audio', maxImages: 0, audioMode: 'music', durations: [10, 20, 30, 45], extra: { app: 'fal-ai/stable-audio', durationField: 'seconds_total' } },
 ]
 
 // probe the LLM endpoint so the UI can fall back to the offline writer when it is down
@@ -52,7 +68,8 @@ export async function catalog(): Promise<Array<ModelInfo & { available: boolean;
   const s = getSettings()
   const llmOk = await llmReachable()
   const custom: ModelInfo[] = s.customModels.map(m => ({
-    id: `custom:${m.id}`, name: m.name || m.id, provider: 'fal', kind: m.kind, maxImages: m.imageField ? 2 : 0,
+    id: `custom:${m.id}`, name: m.name || m.id, provider: 'fal', kind: m.kind, maxImages: m.imageField ? 2 : 0, tool: m.tool,
+    ...(m.tool === 'video-remove' || m.tool === 'video-replace' ? { needs: ['video'] as Array<'video'> } : {}),
     aspects: m.kind === 'video' ? VID_AR : IMG_AR, durations: m.kind === 'video' ? [5, 10] : undefined,
     extra: { app: m.id, imageField: m.imageField || 'image_url' },
   }))

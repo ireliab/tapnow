@@ -10,7 +10,13 @@ export interface Asset {
 /** One entry in a node's generation history. Text nodes store `text`; media nodes store `url`. */
 export interface Output { id: string; kind: NodeKind; url?: string; mime?: string; text?: string; prompt?: string; model?: string; createdAt: number }
 
-export interface NodeParams { aspect?: string; duration?: number; seed?: number; voice?: string; negative?: string; count?: number }
+export interface NodeParams {
+  aspect?: string; duration?: number; seed?: number; voice?: string; negative?: string; count?: number
+  /** speech */
+  speed?: number; pitch?: number; audioMode?: 'speech' | 'music' | 'sfx'
+  /** editing tools: inpaint mask url and tool settings */
+  mask?: string; tool?: Record<string, unknown>
+}
 
 export interface CanvasNodeData extends Record<string, unknown> {
   kind: NodeKind
@@ -32,6 +38,8 @@ export interface CanvasNodeData extends Record<string, unknown> {
   bg?: string
   /** set while the node is collapsed into a stack */
   stackId?: string
+  /** node produced by an editing tool (upscale, cutout, inpaint, relight) — its composer offers that tool's models */
+  tool?: string
 }
 
 export type CanvasNode = Node<CanvasNodeData>
@@ -64,6 +72,7 @@ export interface ProjectMeta { id: string; name: string; updatedAt: number; node
 export interface ModelInfo {
   id: string; name: string; provider: string; kind: NodeKind; maxImages: number; requiresImage?: boolean
   aspects?: string[]; durations?: number[]; available: boolean; reason?: string
+  tool?: string; audioMode?: 'speech' | 'music' | 'sfx'; needs?: Array<'video' | 'audio'>
 }
 
 export interface Job {
@@ -77,5 +86,5 @@ export interface Settings {
   fal: { apiKey: string }
   comfyui: { url: string; imageWorkflow: string; videoWorkflow: string }
   search: { provider: 'tavily' | 'brave'; apiKey: string }
-  customModels: Array<{ id: string; name: string; provider: 'fal'; kind: 'image' | 'video'; imageField?: string }>
+  customModels: Array<{ id: string; name: string; provider: 'fal'; kind: 'image' | 'video'; imageField?: string; tool?: string }>
 }

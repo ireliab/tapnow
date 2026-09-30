@@ -4,7 +4,12 @@ export interface GenRequest {
   kind: GenKind
   model: string
   prompt: string
-  params: { aspect?: string; duration?: number; seed?: number; voice?: string; negative?: string; count?: number; speed?: number; pitch?: number; audioMode?: 'speech' | 'music' | 'sfx' }
+  params: { aspect?: string; duration?: number; seed?: number; voice?: string; negative?: string; count?: number; speed?: number; pitch?: number; audioMode?: 'speech' | 'music' | 'sfx'
+    /** inpaint mask (local /files url, white = change) */
+    mask?: string
+    /** tool-specific settings, e.g. upscale factor */
+    tool?: Record<string, unknown>
+  }
   /** Upstream outputs, as local `/files/..` URLs (or plain text). Image order matters: [first frame, last frame]. */
   inputs: { texts: string[]; images: string[]; videos: string[]; audios: string[] }
 }
@@ -29,6 +34,12 @@ export interface ModelInfo {
   requiresImage?: boolean
   aspects?: string[]
   durations?: number[]
+  /** set on editing-tool models (upscale, cutout, inpaint, relight, video-remove, video-replace) */
+  tool?: string
+  /** audio models: which kind of audio they make */
+  audioMode?: 'speech' | 'music' | 'sfx'
+  /** extra inputs the model needs (lip-sync: video + audio) */
+  needs?: Array<'video' | 'audio'>
   /** provider-specific: fal input field for the image, remote model id, etc. */
   extra?: Record<string, any>
 }

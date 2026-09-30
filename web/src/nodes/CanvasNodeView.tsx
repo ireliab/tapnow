@@ -1,5 +1,5 @@
 import { Handle, Position, useStore as useFlow, type NodeProps } from '@xyflow/react'
-import { memo, useRef } from 'react'
+import { memo, useRef, useState } from 'react'
 import { api } from '../api'
 import { activeOutput } from '../graph'
 import { Icon } from '../icons'
@@ -7,10 +7,22 @@ import { KIND_LABEL, useStore } from '../store'
 import type { CanvasNode, Output } from '../types'
 import { Composer } from './Composer'
 import { TextBody } from './TextBody'
+import { ToolsMenu } from '../tools/ToolsMenu'
+import { Waveform } from '../tools/Waveform'
+
+function AudioPlayer({ url }: { url: string }) {
+  const [p, setP] = useState(0)
+  return (
+    <div className="audio-player nodrag">
+      <Waveform url={url} progress={p} />
+      <audio src={url} controls onTimeUpdate={e => setP(e.currentTarget.currentTime / (e.currentTarget.duration || 1))} />
+    </div>
+  )
+}
 
 export function Media({ output, controls = true }: { output: Output; controls?: boolean }) {
   if (!output.url) return null
-  if (output.kind === 'audio') return <audio className="nodrag" src={output.url} controls />
+  if (output.kind === 'audio') return <AudioPlayer url={output.url} />
   // mock videos are animated SVGs
   if (output.kind === 'video' && !output.mime?.includes('svg'))
     return <video src={output.url} controls={controls} muted loop playsInline className={controls ? 'nodrag' : undefined} />
@@ -49,6 +61,7 @@ function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
 
       {selected && (
         <div className="cnode-toolbar nodrag" style={{ transform: `translateX(-50%) scale(${Math.min(2.5, Math.max(1, 1 / zoom))})` }}>
+          <ToolsMenu id={id} data={data} />
           {data.kind !== 'text' && <button title="Upload file" onClick={() => fileRef.current?.click()}><Icon name="upload" /></button>}
           {out?.url && <button title="View" onClick={() => set({ lightbox: out })}><Icon name="expand" /></button>}
           {out?.url && <a title="Download" href={out.url} download><Icon name="download" /></a>}

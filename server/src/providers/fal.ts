@@ -13,17 +13,27 @@ export const fal: Provider = {
     const prompt = [...req.inputs.texts, req.prompt].filter(Boolean).join('\n')
     const x = model.extra ?? {}
 
-    const input: Record<string, any> = { prompt }
+    const input: Record<string, any> = { [x.textField ?? 'prompt']: prompt }
     if (req.params.seed !== undefined) input.seed = req.params.seed
     if (req.params.negative) input.negative_prompt = req.params.negative
     if (model.kind === 'image') {
       const { width, height } = aspectToSize(req.params.aspect)
       if (x.sizeField === 'image_size') input.image_size = { width, height }
       else if (req.params.aspect) input.aspect_ratio = req.params.aspect
+    } else if (model.kind === 'audio') {
+      if (req.params.voice && model.audioMode === 'speech') input.voice = req.params.voice
+      if (req.params.duration && x.durationField) input[x.durationField] = req.params.duration
+      if (req.params.speed && model.audioMode === 'speech') input.speed = req.params.speed
     } else if (model.kind === 'video') {
       if (req.params.aspect && !req.inputs.images.length) input.aspect_ratio = req.params.aspect
       if (req.params.duration) input.duration = x.durationSuffix ? `${req.params.duration}${x.durationSuffix}` : String(req.params.duration)
     }
+    // editing tools and lip-sync take their media under fixed field names
+    if (model.tool === 'inpaint' && req.params.mask) input.mask_url = toDataUri(req.params.mask)
+    if (model.tool === 'upscale') { input.upscale_factor = Number(req.params.tool?.factor) || 2; if (!prompt) delete input.prompt }
+    if (model.tool === 'cutout' && !prompt) delete input.prompt
+    if (req.inputs.videos[0] && (model.needs?.includes('video'))) input.video_url = toDataUri(req.inputs.videos[0])
+    if (req.inputs.audios[0] && (model.needs?.includes('audio'))) input.audio_url = toDataUri(req.inputs.audios[0])
     const imgs = req.inputs.images.map(toDataUri)
     if (imgs.length) {
       if (x.imageField === 'image_urls') input.image_urls = imgs

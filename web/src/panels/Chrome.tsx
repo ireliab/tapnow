@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { api } from '../api'
 import { canConnect } from '../graph'
 import { Icon, type IconName } from '../icons'
@@ -121,13 +122,16 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
     window.addEventListener('keydown', k)
     return () => window.removeEventListener('keydown', k)
   }, [onClose])
-  return (
-    <div className="modal-backdrop" onPointerDown={e => e.target === e.currentTarget && onClose()}>
+  // portal: modals opened from inside a node must escape React Flow's transformed viewport
+  return createPortal(
+    <div className="modal-backdrop" onPointerDown={e => e.target === e.currentTarget && onClose()}
+      onKeyDown={e => e.stopPropagation()} onCopy={e => e.stopPropagation()} onPaste={e => e.stopPropagation()}>
       <div className={`modal ${wide ? 'wide' : ''}`}>
         <div className="modal-head"><h2>{title}</h2><button className="icon-btn" onClick={onClose}><Icon name="x" /></button></div>
         <div className="modal-body">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

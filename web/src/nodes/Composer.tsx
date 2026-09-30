@@ -14,7 +14,10 @@ export function Composer({ id, data, zoom }: { id: string; data: CanvasNodeData;
   const edges = useStore(s => s.edges)
   const { updateData, generate, cancel } = useStore.getState()
   const inputs = useMemo(() => resolveInputs(id, nodes, edges), [id, nodes, edges])
-  const kindModels = models.filter(m => m.kind === data.kind)
+  // tool nodes (enhance, cutout, …) offer that tool's models; audio nodes filter by mode
+  const audioMode = data.params.audioMode ?? models.find(m => m.id === data.model)?.audioMode ?? 'speech'
+  const kindModels = models.filter(m => m.kind === data.kind && (data.tool ? m.tool === data.tool : !m.tool)
+    && (data.kind !== 'audio' || !m.audioMode || m.audioMode === audioMode))
   const model = kindModels.find(m => m.id === data.model)
   const busy = data.status === 'queued' || data.status === 'running'
   const setParam = (p: Partial<NodeParams>) => updateData(id, { params: { ...data.params, ...p } })
@@ -43,6 +46,11 @@ export function Composer({ id, data, zoom }: { id: string; data: CanvasNodeData;
     inputs.videos.length && `${inputs.videos.length} video`,
     inputs.audios.length && `${inputs.audios.length} audio`,
   ].filter(Boolean)
+  const needsWarning = model?.needs?.filter(k => !(k === 'video' ? inputs.videos : inputs.audios).length).map(k => `${model.name} needs a connected ${k}`).join(' · ')
+  const setAudioMode = (m: 'speech' | 'music' | 'sfx') => {
+    const first = models.find(x => x.kind === 'audio' && x.audioMode === m && x.available && x.provider !== 'mock') ?? models.find(x => x.kind === 'audio' && x.audioMode === m && x.available)
+    updateData(id, { params: { ...data.params, audioMode: m, duration: first?.durations?.[0] }, ...(first ? { model: first.id } : {}) })
+  }
   const imageWarning = model && inputs.images.length > model.maxImages
     ? model.maxImages ? `${model.name} uses only the first ${model.maxImages} image(s)` : `${model.name} ignores image inputs`
     : model?.requiresImage && !inputs.images.length ? `${model.name} needs a connected image` : ''
@@ -63,11 +71,29 @@ export function Composer({ id, data, zoom }: { id: string; data: CanvasNodeData;
           )}
         </div>
       )}
-      {(inputChips.length > 0 || imageWarning) && (
+      {data.kind === 'audio' && (
+        <div className="composer-row audio-mode">
+          <div className="seg small">{(['speech', 'music', 'sfx'] as const).map(m => <button key={m} className={audioMode === m ? 'on' : ''} onClick={() => setAudioMode(m)}>{m === 'sfx' ? 'Sound FX' : m}</button>)}</div>
+          {audioMode === 'speech' && <>
+            <label className="mini">Speed {(data.params.speed ?? 1).toFixed(1)}×<input type="range" min={0.5} max={2} step={0.1} value={data.params.speed ?? 1} onChange={e => setParam({ speed: Number(e.target.value) })} /></label>
+            <label className="mini">Pitch {data.params.pitch ?? 0}<input type="range" min={-12} max={12} step={1} value={data.params.pitch ?? 0} onChange={e => setParam({ pitch: Number(e.target.value) })} /></label>
+          </>}
+        </div>
+      )}
+      {data.kind === 'video' && !data.tool && (
+        <div className="camera-chips">
+          {['static camera', 'slow dolly-in', 'dolly-out', 'orbit left', 'crane up', 'tracking shot', 'handheld', 'whip pan', 'zoom in'].map(c => (
+            <button key={c} onClick={() => updateData(id, { prompt: data.prompt.includes(c) ? data.prompt : `${data.prompt.trim()}${data.prompt.trim() ? ', ' : ''}${c}` })}>{c}</button>
+          ))}
+        </div>
+      )}
+      {(inputChips.length > 0 || imageWarning || needsWarning) && (
         <div className="composer-inputs">
           {inputChips.length > 0 && <span className="chip ghost">Inputs: {inputChips.join(' · ')}</span>}
           {data.kind === 'video' && inputs.images.length > 1 && model && model.maxImages > 1 && <span className="chip ghost">first + last frame</span>}
           {imageWarning && <span className="chip warn">{imageWarning}</span>}
+          {needsWarning && <span className="chip warn">{needsWarning}</span>}
+          {data.tool && <span className="chip skill">tool · {data.tool}</span>}
         </div>
       )}
       <div className="composer-row">

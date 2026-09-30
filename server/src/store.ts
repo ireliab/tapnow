@@ -28,7 +28,7 @@ export interface Settings {
   fal: { apiKey: string }
   comfyui: { url: string; imageWorkflow: string; videoWorkflow: string }
   search: { provider: 'tavily' | 'brave'; apiKey: string }
-  customModels: Array<{ id: string; name: string; provider: 'fal'; kind: 'image' | 'video'; imageField?: string }>
+  customModels: Array<{ id: string; name: string; provider: 'fal'; kind: 'image' | 'video'; imageField?: string; tool?: string }>
 }
 const SETTINGS_FILE = path.join(DATA, 'settings.json')
 const defaults: Settings = {

@@ -72,6 +72,37 @@ ${body}<rect width="${w}" height="${h}" fill="url(#fade)"/>
 <g font-family="Inter,Segoe UI,Arial,sans-serif" fill="#fff" font-weight="600">${text}</g>${badge}</svg>`
 }
 
+/** Placeholder output for an editing tool: the source image with a visible treatment + label. */
+function toolSvg(tool: string, src: string | undefined, prompt: string, mask?: string) {
+  const w = 1024, h = 1024
+  const img = src ? `<image href="${toDataUri(src)}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet"/>` : `<rect width="${w}" height="${h}" fill="#333"/>`
+  const label = { upscale: 'ENHANCED 2×', cutout: 'CUTOUT', inpaint: 'INPAINTED', relight: 'RELIT' }[tool] ?? tool.toUpperCase()
+  const fx = {
+    upscale: `<g filter="url(#sharp)">${img}</g>`,
+    cutout: `<pattern id="chk" width="40" height="40" patternUnits="userSpaceOnUse"><rect width="20" height="20" fill="#444"/><rect x="20" y="20" width="20" height="20" fill="#444"/></pattern><rect width="${w}" height="${h}" fill="#2a2a2a"/><rect width="${w}" height="${h}" fill="url(#chk)"/><g clip-path="url(#blob)">${img}</g>`,
+    inpaint: `${img}${mask ? `<image href="${toDataUri(mask)}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet" opacity=".45" style="mix-blend-mode:screen"/>` : ''}`,
+    relight: `${img}<rect width="${w}" height="${h}" fill="url(#light)"/>`,
+  }[tool] ?? img
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+<defs><filter id="sharp"><feConvolveMatrix order="3" kernelMatrix="0 -1 0 -1 5 -1 0 -1 0"/></filter>
+<clipPath id="blob"><ellipse cx="${w / 2}" cy="${h / 2}" rx="${w * 0.36}" ry="${h * 0.42}"/></clipPath>
+<radialGradient id="light" cx="0.2" cy="0.2" r="0.9"><stop offset="0" stop-color="#ffd27a" stop-opacity=".55"/><stop offset="1" stop-color="#1a1030" stop-opacity=".55"/></radialGradient></defs>
+${fx}<g font-family="Inter,Segoe UI,Arial,sans-serif" font-weight="700"><rect x="24" y="24" rx="20" width="${label.length * 17 + 44}" height="44" fill="#000" opacity=".55"/>
+<text x="46" y="55" font-size="22" fill="#fff">${label}</text>${prompt ? `<text x="30" y="${h - 36}" font-size="26" fill="#fff" opacity=".9">${esc(prompt.slice(0, 60))}</text>` : ''}</g></svg>`
+}
+
+function noiseWav(seconds: number, seed: number) {
+  const rate = 22050, n = Math.round(rate * seconds)
+  const buf = wav(seconds, seed)
+  let x = seed || 1
+  for (let i = 0; i < n; i++) {
+    x = (x * 1103515245 + 12345) & 0x7fffffff
+    const env = Math.exp(-3 * (i / n)) * Math.min(1, i / 200)
+    buf.writeInt16LE(Math.round(((x / 0x7fffffff) * 2 - 1) * 0.35 * env * 32767), 44 + i * 2)
+  }
+  return buf
+}
+
 function wav(seconds: number, seed: number) {
   const rate = 22050, n = Math.round(rate * seconds)
   const buf = Buffer.alloc(44 + n * 2)
@@ -99,6 +130,7 @@ export const mock: Provider = {
     const steps = model.kind === 'video' ? 8 : 4
     for (let i = 1; i <= steps; i++) { await sleep(300, ctx.signal); ctx.progress(i / steps) }
     const prompt = [...req.inputs.texts, req.prompt].filter(Boolean).join(' ')
+    if (model.tool) return { bytes: Buffer.from(toolSvg(model.tool, req.inputs.images[0], req.prompt, req.params.mask)), mime: 'image/svg+xml' }
     switch (model.kind) {
       case 'text': {
         const base = prompt || 'a quiet city at dawn'
@@ -109,8 +141,10 @@ export const mock: Provider = {
       case 'video':
         return { bytes: Buffer.from(svg(prompt, req.params.aspect ?? '16:9', seed, req.inputs.images, req.params.duration ?? 5)), mime: 'image/svg+xml' }
       case 'audio': {
+        if (model.audioMode === 'sfx') return { bytes: noiseWav(req.params.duration ?? 2, seed), mime: 'audio/wav' }
+        if (model.audioMode === 'music') return { bytes: wav(req.params.duration ?? 10, seed), mime: 'audio/wav' }
         const words = prompt.split(/\s+/).length
-        return { bytes: wav(Math.min(12, Math.max(2, words * 0.35)), seed), mime: 'audio/wav' }
+        return { bytes: wav(Math.min(12, Math.max(2, words * 0.35 / (req.params.speed ?? 1))), seed), mime: 'audio/wav' }
       }
     }
   },
