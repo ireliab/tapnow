@@ -4,7 +4,7 @@ export interface GenRequest {
   kind: GenKind
   model: string
   prompt: string
-  params: { aspect?: string; duration?: number; seed?: number; voice?: string; negative?: string }
+  params: { aspect?: string; duration?: number; seed?: number; voice?: string; negative?: string; count?: number; speed?: number; pitch?: number; audioMode?: 'speech' | 'music' | 'sfx' }
   /** Upstream outputs, as local `/files/..` URLs (or plain text). Image order matters: [first frame, last frame]. */
   inputs: { texts: string[]; images: string[]; videos: string[]; audios: string[] }
 }

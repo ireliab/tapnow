@@ -5,12 +5,13 @@ import cors from 'cors'
 import express from 'express'
 import multer from 'multer'
 import { WebSocketServer } from 'ws'
+import { uniqueNames, zip } from './zip.js'
 import { agentRouter, skillsRouter } from './agent/routes.js'
 import { cancel, enqueue, listJobs, onJobUpdate } from './jobs.js'
 import { catalog } from './providers/index.js'
 import {
   addAsset, createProject, deleteAsset, deleteProject, FILES, getProject, kindOfMime, listAssets,
-  listProjects, maskedSettings, ROOT, saveBytes, saveProject, saveSettings,
+  fileFromUrl, listProjects, maskedSettings, ROOT, saveBytes, saveProject, saveSettings,
 } from './store.js'
 
 const PORT = Number(process.env.API_PORT ?? 8787)
@@ -47,6 +48,26 @@ app.post('/api/upload', upload.array('files'), (req, res) => {
   res.json(assets)
 })
 app.delete('/api/assets/:id', (req, res) => { deleteAsset(req.params.id); res.json({ ok: true }) })
+
+// batch download: POST {name, files: [{url, name}]} -> zip (same source file included once)
+app.post('/api/zip', wrap((req, res) => {
+  const seen = new Set<string>()
+  const files = (req.body?.files ?? []).filter((f: any) => typeof f?.url === 'string' && f.url.startsWith('/files/') && !seen.has(f.url) && seen.add(f.url))
+  if (!files.length) throw new Error('No downloadable files')
+  const names = uniqueNames(files.map((f: any) => {
+    const ext = path.extname(f.url)
+    const base = String(f.name ?? path.basename(f.url, ext)).trim() || 'file'
+    return base.endsWith(ext) ? base : base + ext
+  }))
+  const entries = files.flatMap((f: any, i: number) => {
+    const file = fileFromUrl(f.url)
+    return fs.existsSync(file) ? [{ name: names[i], data: fs.readFileSync(file) }] : []
+  })
+  const archive = String(req.body?.name ?? 'taplocal').replace(/[^\w .-]+/g, '_') || 'taplocal'
+  res.setHeader('Content-Type', 'application/zip')
+  res.setHeader('Content-Disposition', `attachment; filename="${archive}.zip"`)
+  res.end(zip(entries))
+}))
 
 // models / settings
 app.get('/api/models', wrap(async (_req, res) => { res.json(await catalog()) }))

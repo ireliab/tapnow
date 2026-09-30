@@ -1,18 +1,22 @@
-import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, ReactFlowProvider, type OnConnectEnd } from '@xyflow/react'
+import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, ReactFlowProvider, type OnConnectEnd, type OnNodeDrag } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './agent/agent.css'
-import { useCallback, useEffect, useRef } from 'react'
+import './canvas.css'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { api, connectJobs } from './api'
+import { addComment, addToStack, copySelection, pasteNodes } from './canvasOps'
 import CanvasNodeView from './nodes/CanvasNodeView'
+import { CommentNodeView, GroupNodeView, StackGallery, StackNodeView } from './nodes/ExtraNodes'
+import { PinBar, SearchOverlay, SelectionToolbar } from './panels/CanvasChrome'
 import { AddMenu, Lightbox, ProjectsModal, Toast, Toolbar, TopBar } from './panels/Chrome'
 import { SettingsModal } from './panels/SettingsModal'
 import { AgentPanel } from './agent/AgentPanel'
 import { AssetsPanel } from './panels/SidePanels'
 import { Timeline } from './panels/Timeline'
-import { useStore } from './store'
-import type { Asset, CanvasEdge, CanvasNode, NodeKind } from './types'
+import { combinedNodes, useStore } from './store'
+import type { AnyNode, Asset, CanvasEdge, NodeKind } from './types'
 
-const nodeTypes = { canvas: CanvasNodeView }
+const nodeTypes = { canvas: CanvasNodeView, group: GroupNodeView, stack: StackNodeView, comment: CommentNodeView }
 let booted = false
 const KEY_KIND: Record<string, NodeKind> = { t: 'text', i: 'image', v: 'video', a: 'audio' }
 const isTyping = (e: Event) => {
@@ -22,7 +26,11 @@ const isTyping = (e: Event) => {
 
 function Canvas() {
   const nodes = useStore(s => s.nodes)
+  const extras = useStore(s => s.extras)
+  const all = useMemo(() => combinedNodes(nodes, extras), [nodes, extras])
   const edges = useStore(s => s.edges)
+  const commentMode = useStore(s => s.commentMode)
+  const snapToGrid = useStore(s => s.canvasSettings.snapToGrid)
   const panel = useStore(s => s.panel)
   const s = useStore.getState()
   const fileInput = useRef<HTMLInputElement>(null)
@@ -43,7 +51,7 @@ function Canvas() {
   useEffect(() => {
     let t: ReturnType<typeof setTimeout> | undefined
     const unsub = useStore.subscribe((st, prev) => {
-      if (st.dirty && (st.nodes !== prev.nodes || st.edges !== prev.edges || st.timeline !== prev.timeline || st.projectName !== prev.projectName)) {
+      if (st.dirty && (st.nodes !== prev.nodes || st.extras !== prev.extras || st.edges !== prev.edges || st.timeline !== prev.timeline || st.projectName !== prev.projectName)) {
         clearTimeout(t)
         t = setTimeout(() => useStore.getState().save(), 1200)
       }
@@ -69,27 +77,38 @@ function Canvas() {
       const mod = e.ctrlKey || e.metaKey
       if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); st.save(); return }
       if (mod && e.key.toLowerCase() === 'j') { e.preventDefault(); st.set({ panel: st.panel === 'agent' ? null : 'agent' }); return }
+      if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); st.set({ searchOpen: true }); return }
       if (isTyping(e)) return
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? st.redo() : st.undo() }
       else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); st.redo() }
       else if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); st.duplicate(st.nodes.filter(n => n.selected).map(n => n.id)) }
       else if (!mod && !e.altKey && KEY_KIND[e.key.toLowerCase()]) st.addNode(KEY_KIND[e.key.toLowerCase()])
-      else if (e.key === 'Escape') st.set({ addMenu: null })
+      else if (!mod && !e.altKey && e.key.toLowerCase() === 'c') st.set({ commentMode: !st.commentMode })
+      else if (e.key === 'Escape') st.set({ addMenu: null, commentMode: false })
+    }
+    // copy/paste nodes through the system clipboard (also works across projects and tabs)
+    const onCopy = (e: ClipboardEvent) => {
+      if (isTyping(e) || window.getSelection()?.toString()) return
+      const text = copySelection()
+      if (text) { e.preventDefault(); e.clipboardData?.setData('text/plain', text) }
     }
     const onPaste = (e: ClipboardEvent) => {
       if (isTyping(e)) return
+      const text = e.clipboardData?.getData('text/plain') ?? ''
+      if (text && pasteNodes(text)) { e.preventDefault(); return }
       const files = [...(e.clipboardData?.files ?? [])]
       if (files.length) { e.preventDefault(); uploadFiles(files) }
     }
     window.addEventListener('keydown', onKey)
+    window.addEventListener('copy', onCopy)
     window.addEventListener('paste', onPaste)
-    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('paste', onPaste) }
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('copy', onCopy); window.removeEventListener('paste', onPaste) }
   }, [uploadFiles])
 
   const openAddMenu = (clientX: number, clientY: number, fromNodeId?: string) => {
     const st = useStore.getState()
     if (!st.rf) return
-    st.set({ addMenu: { screen: { x: clientX, y: clientY }, flow: st.rf.screenToFlowPosition({ x: clientX, y: clientY }), fromNodeId } })
+    st.set({ addMenu: { screen: { x: clientX, y: clientY }, flow: st.rf.screenToFlowPosition({ x: clientX, y: clientY }), fromNodeIds: fromNodeId ? [fromNodeId] : undefined } })
   }
 
   // drag a wire from an output into empty space -> pick a node to create & connect
@@ -97,6 +116,16 @@ function Canvas() {
     if (conn.isValid || !conn.fromNode || conn.fromHandle?.type !== 'source' || conn.toNode) return
     const p = 'changedTouches' in event ? event.changedTouches[0] : event
     openAddMenu(p.clientX, p.clientY, conn.fromNode.id)
+  }
+
+  // drop nodes onto a stack to add them to the pile
+  const onNodeDragStop: OnNodeDrag<AnyNode> = (_e, node) => {
+    const st = useStore.getState()
+    if (!st.rf || node.type === 'group' || node.type === 'comment') return
+    const target = st.rf.getIntersectingNodes(node).find(n => n.type === 'stack' && n.id !== node.id)
+    if (!target) return
+    const moving = [node.id, ...st.nodes.filter(n => n.selected && n.id !== node.id).map(n => n.id)]
+    addToStack(target.id, moving)
   }
 
   const onDrop = (e: React.DragEvent) => {
@@ -113,24 +142,29 @@ function Canvas() {
       <TopBar />
       <div className="main">
         <Toolbar onUpload={() => fileInput.current?.click()} />
-        <div className="canvas" ref={wrapper} onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }} onDrop={onDrop}
+        <div className={'canvas' + (commentMode ? ' comment-mode' : '')} ref={wrapper} onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }} onDrop={onDrop}
           onDoubleClick={e => { if ((e.target as HTMLElement).classList.contains('react-flow__pane')) openAddMenu(e.clientX, e.clientY) }}>
-          <ReactFlow<CanvasNode, CanvasEdge>
-            nodes={nodes} edges={edges} nodeTypes={nodeTypes}
+          <ReactFlow<AnyNode, CanvasEdge>
+            nodes={all} edges={edges} nodeTypes={nodeTypes}
+            onPaneClick={e => { const st = useStore.getState(); if (st.commentMode && st.rf) addComment(st.rf.screenToFlowPosition({ x: e.clientX, y: e.clientY })) }}
+            onNodeDragStop={onNodeDragStop} snapToGrid={snapToGrid} snapGrid={[20, 20]}
             onNodesChange={s.onNodesChange} onEdgesChange={s.onEdgesChange} onConnect={s.onConnect}
             isValidConnection={s.isValidConnection} onConnectEnd={onConnectEnd}
             onInit={rf => useStore.setState({ rf })}
             onNodeDragStart={() => s.checkpoint()}
             onMoveEnd={() => useStore.setState({ dirty: true })}
-            zoomOnDoubleClick={false} minZoom={0.1} maxZoom={2.5} proOptions={{ hideAttribution: true }}
+            zoomOnDoubleClick={false} connectOnClick={false} minZoom={0.1} maxZoom={2.5} proOptions={{ hideAttribution: true }}
             deleteKeyCode={['Backspace', 'Delete']} multiSelectionKeyCode={['Shift', 'Meta', 'Control']}
             selectionOnDrag panOnDrag={[1, 2]} panOnScroll selectionKeyCode={null}
             defaultEdgeOptions={{ type: 'default', animated: false }} colorMode="dark" fitView
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="#2c2c33" />
-            <MiniMap pannable zoomable nodeColor={n => ({ text: '#8b8b95', image: '#5b8cff', video: '#b36bff', audio: '#2fc2a0' } as Record<string, string>)[(n.data as any).kind]} maskColor="rgba(10,10,12,.7)" />
+            <MiniMap pannable zoomable nodeColor={n => (n.type === 'canvas' ? ({ text: '#8b8b95', image: '#5b8cff', video: '#b36bff', audio: '#2fc2a0' } as Record<string, string>)[(n.data as any).kind] : n.type === 'group' ? 'transparent' : '#55555f')} maskColor="rgba(10,10,12,.7)" />
             <Controls showInteractive={false} />
+            <SelectionToolbar />
           </ReactFlow>
+          <PinBar />
+          {commentMode && <div className="mode-hint">Click anywhere to place a comment · Esc to cancel</div>}
           {!nodes.length && (
             <div className="empty-canvas">
               <h1>Start creating</h1>
@@ -151,6 +185,8 @@ function Canvas() {
         onChange={e => { uploadFiles([...(e.target.files ?? [])]); e.target.value = '' }} />
       <ProjectsModal />
       <SettingsModal />
+      <StackGallery />
+      <SearchOverlay />
       <Lightbox />
       <Toast />
     </div>

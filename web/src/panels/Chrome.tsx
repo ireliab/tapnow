@@ -34,6 +34,7 @@ const TOOLS: Array<{ kind: NodeKind; icon: IconName; key: string }> = [
 
 export function Toolbar({ onUpload }: { onUpload: () => void }) {
   const panel = useStore(s => s.panel)
+  const commentMode = useStore(s => s.commentMode)
   const { addNode, set } = useStore.getState()
   const toggle = (p: 'agent' | 'assets') => set({ panel: panel === p ? null : p })
   return (
@@ -44,6 +45,9 @@ export function Toolbar({ onUpload }: { onUpload: () => void }) {
         </button>
       ))}
       <button title="Upload files" onClick={onUpload}><Icon name="upload" size={18} /><span>Upload</span></button>
+      <hr />
+      <button className={commentMode ? 'on' : ''} title="Comment mode (C)" onClick={() => set({ commentMode: !commentMode })}><Icon name="bot" size={18} /><span>Comment</span></button>
+      <button title="Search nodes (Ctrl+F)" onClick={() => set({ searchOpen: true })}><Icon name="list" size={18} /><span>Search</span></button>
       <hr />
       <button className={panel === 'assets' ? 'on' : ''} title="Assets" onClick={() => toggle('assets')}><Icon name="folder" size={18} /><span>Assets</span></button>
       <button className={panel === 'agent' ? 'on' : ''} title="Agent" onClick={() => toggle('agent')}><Icon name="bot" size={18} /><span>Agent</span></button>
@@ -57,21 +61,23 @@ export function AddMenu() {
   const nodes = useStore(s => s.nodes)
   const { addNode, set, onConnect } = useStore.getState()
   if (!menu) return null
-  const from = menu.fromNodeId ? nodes.find(n => n.id === menu.fromNodeId) : undefined
-  const kinds = TOOLS.filter(t => !from || canConnect(from.data.kind, t.kind))
+  const from = (menu.fromNodeIds ?? []).map(id => nodes.find(n => n.id === id)).filter(Boolean) as typeof nodes
+  const kinds = TOOLS.filter(t => from.every(f => canConnect(f.data.kind, t.kind)))
   const pick = (kind: NodeKind) => {
     const id = addNode(kind, { x: menu.flow.x, y: menu.flow.y - 60 })
-    if (from) onConnect({ source: from.id, target: id, sourceHandle: null, targetHandle: null })
+    for (const f of from) onConnect({ source: f.id, target: id, sourceHandle: null, targetHandle: null })
     set({ addMenu: null })
   }
+  const title = from.length === 1 ? 'Connect "' + from[0].data.title + '" to…' : from.length ? 'Connect ' + from.length + ' nodes to…' : 'Add node'
   return (
     <>
       <div className="backdrop-clear" onPointerDown={() => set({ addMenu: null })} />
       <div className="add-menu" style={{ left: Math.min(menu.screen.x, window.innerWidth - 220), top: Math.min(menu.screen.y, window.innerHeight - 230) }}>
-        <div className="menu-title">{from ? `Connect "${from.data.title}" to…` : 'Add node'}</div>
+        <div className="menu-title">{title}</div>
         {kinds.map(t => (
           <button key={t.kind} onClick={() => pick(t.kind)}><Icon name={t.icon} /> {KIND_LABEL[t.kind]} <kbd>{t.key}</kbd></button>
         ))}
+        {!kinds.length && <div className="menu-title">No node type accepts all of these inputs</div>}
       </div>
     </>
   )

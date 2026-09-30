@@ -116,7 +116,7 @@ export function toDataUri(url: string) {
 }
 
 // ---------- projects ----------
-export interface Project { id: string; name: string; updatedAt: number; nodes: any[]; edges: any[]; timeline: any[]; viewport?: any }
+export interface Project { id: string; name: string; updatedAt: number; nodes: any[]; edges: any[]; timeline: any[]; extras?: any[]; viewport?: any }
 const pfile = (id: string) => path.join(PROJECTS, `${id.replace(/[^\w-]/g, '')}.json`)
 export function listProjects() {
   return fs.readdirSync(PROJECTS).filter(f => f.endsWith('.json')).map(f => {

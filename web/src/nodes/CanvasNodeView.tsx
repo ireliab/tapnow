@@ -6,6 +6,7 @@ import { Icon } from '../icons'
 import { KIND_LABEL, useStore } from '../store'
 import type { CanvasNode, Output } from '../types'
 import { Composer } from './Composer'
+import { TextBody } from './TextBody'
 
 export function Media({ output, controls = true }: { output: Output; controls?: boolean }) {
   if (!output.url) return null
@@ -42,6 +43,7 @@ function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
     <div className={`cnode kind-${data.kind} ${selected ? 'selected' : ''} status-${data.status}`}>
       <div className="cnode-label" style={{ visibility: zoom < 0.35 ? 'hidden' : undefined }}>
         <Icon name={data.kind} size={13} />
+        {data.pin && <i className="swatch pin-dot" style={{ background: data.pin }} title="Pinned" />}
         <input className="nodrag title-input" value={data.title} onChange={e => updateData(id, { title: e.target.value })} />
       </div>
 
@@ -59,14 +61,18 @@ function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
       )}
 
       <Handle type="target" position={Position.Left} className="port port-in"><Icon name="plus" size={12} /></Handle>
-      <Handle type="source" position={Position.Right} className="port port-out"><Icon name="plus" size={12} /></Handle>
+      <Handle type="source" position={Position.Right} className="port port-out" title="Click to add a connected node, drag to connect"
+        onClick={e => {
+          // TapNow: the right + creates a downstream node that is already connected
+          const rf = useStore.getState().rf
+          if (!rf) return
+          const at = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY })
+          set({ addMenu: { screen: { x: e.clientX + 12, y: e.clientY - 20 }, flow: { x: at.x + 120, y: at.y }, fromNodeIds: [id] } })
+        }}><Icon name="plus" size={12} /></Handle>
 
       <div className="cnode-card">
         {data.kind === 'text' ? (
-          <textarea
-            className="nodrag nowheel text-body" value={data.prompt} placeholder="Write a prompt, script or style notes…"
-            onChange={e => updateData(id, { prompt: e.target.value })}
-          />
+          <TextBody id={id} data={data} selected={!!selected} />
         ) : (
           <div className="media" style={{ aspectRatio: data.kind === 'audio' ? undefined : ASPECT[data.params.aspect ?? '16:9'] }}
             onDoubleClick={() => out?.url && set({ lightbox: out })}>

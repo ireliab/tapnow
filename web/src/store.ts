@@ -1,8 +1,9 @@
 import { addEdge, applyEdgeChanges, applyNodeChanges, type Connection, type EdgeChange, type NodeChange, type ReactFlowInstance, type XYPosition } from '@xyflow/react'
 import { create } from 'zustand'
 import { api } from './api'
-import { ancestors, canConnect, layoutBatch, nodeValue, resolveInputs, missingUpstream, topoOrder } from './graph'
-import type { Asset, CanvasEdge, CanvasNode, CanvasNodeData, Job, ModelInfo, NodeKind, NodeParams, Output, TimelineClip } from './types'
+import { absolutize, ancestors, canConnect, expandMentions, layoutBatch, nodeValue, resolveInputs, missingUpstream, topoOrder, upstreamOf } from './graph'
+import { placeResults } from './canvasOps'
+import type { AnyNode, Asset, CanvasEdge, CanvasNode, CanvasNodeData, ExtraNode, Job, ModelInfo, NodeKind, NodeParams, Output, StackNode, TimelineClip } from './types'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
@@ -11,18 +12,34 @@ export const KIND_LABEL: Record<NodeKind, string> = { text: 'Text', image: 'Imag
 
 export interface BatchNode { ref: string; kind: NodeKind; title?: string; prompt?: string; model?: string; params?: NodeParams }
 
-type Snapshot = { nodes: CanvasNode[]; edges: CanvasEdge[]; timeline: TimelineClip[] }
+type Snapshot = { nodes: CanvasNode[]; edges: CanvasEdge[]; timeline: TimelineClip[]; extras: ExtraNode[] }
+export type ResultMode = 'history' | 'spread' | 'stack'
+export interface CanvasSettings { resultMode: ResultMode; snapToGrid: boolean }
+const loadCanvasSettings = (): CanvasSettings => {
+  try { return { resultMode: 'history', snapToGrid: false, ...JSON.parse(localStorage.getItem('taplocal:canvas') ?? '{}') } } catch { return { resultMode: 'history', snapToGrid: false } }
+}
+
+/** React Flow needs parents before children, so groups go first. */
+export const combinedNodes = (nodes: CanvasNode[], extras: ExtraNode[]): AnyNode[] =>
+  [...extras.filter(x => x.type === 'group'), ...nodes, ...extras.filter(x => x.type !== 'group')]
 type Panel = 'agent' | 'assets' | 'jobs' | null
-export type AddMenu = { screen: XYPosition; flow: XYPosition; fromNodeId?: string } | null
+export type AddMenu = { screen: XYPosition; flow: XYPosition; fromNodeIds?: string[] } | null
 
 interface State {
   projectId?: string
   projectName: string
   nodes: CanvasNode[]
+  /** groups, stacks, comments, playlists */
+  extras: ExtraNode[]
   edges: CanvasEdge[]
   timeline: TimelineClip[]
   models: ModelInfo[]
-  rf?: ReactFlowInstance<CanvasNode, CanvasEdge>
+  rf?: ReactFlowInstance<AnyNode, CanvasEdge>
+  canvasSettings: CanvasSettings
+  commentMode: boolean
+  searchOpen: boolean
+  /** stack whose gallery is open */
+  openStack?: string
   panel: Panel
   settingsOpen: boolean
   projectsOpen: boolean
@@ -45,7 +62,7 @@ interface Actions {
   checkpoint: () => void
   undo: () => void
   redo: () => void
-  onNodesChange: (c: NodeChange<CanvasNode>[]) => void
+  onNodesChange: (c: NodeChange<AnyNode>[]) => void
   onEdgesChange: (c: EdgeChange<CanvasEdge>[]) => void
   onConnect: (c: Connection) => void
   isValidConnection: (c: Connection | CanvasEdge) => boolean
@@ -80,7 +97,8 @@ let stopRequested = false
 
 export const useStore = create<State & Actions>((set, get) => ({
   projectName: 'Untitled',
-  nodes: [], edges: [], timeline: [], models: [],
+  nodes: [], extras: [], edges: [], timeline: [], models: [],
+  canvasSettings: loadCanvasSettings(), commentMode: false, searchOpen: false,
   panel: null, settingsOpen: false, projectsOpen: false, addMenu: null,
   dirty: false, saving: false, runningAll: false, past: [], future: [],
 
@@ -98,7 +116,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     // never restore a transient running state from disk
     const nodes = p.nodes.map(n => n.data.status === 'queued' || n.data.status === 'running'
       ? { ...n, data: { ...n.data, status: 'idle' as const, progress: undefined, jobId: undefined } } : n)
-    set({ projectId: p.id, projectName: p.name, nodes, edges: p.edges, timeline: p.timeline ?? [], past: [], future: [], dirty: false, projectsOpen: false })
+    set({ projectId: p.id, projectName: p.name, nodes, extras: p.extras ?? [], edges: p.edges, timeline: p.timeline ?? [], past: [], future: [], dirty: false, projectsOpen: false, openStack: undefined })
     localStorage.setItem('taplocal:project', p.id)
     requestAnimationFrame(() => {
       const rf = get().rf
@@ -113,36 +131,65 @@ export const useStore = create<State & Actions>((set, get) => ({
     if (!s.projectId) return
     set({ saving: true })
     try {
-      await api.saveProject({ id: s.projectId, name: s.projectName, updatedAt: Date.now(), nodes: s.nodes, edges: s.edges, timeline: s.timeline, viewport: s.rf?.getViewport() })
+      await api.saveProject({ id: s.projectId, name: s.projectName, updatedAt: Date.now(), nodes: s.nodes, extras: s.extras, edges: s.edges, timeline: s.timeline, viewport: s.rf?.getViewport() })
       set({ dirty: false })
     } catch (e: any) { get().notify(`Save failed: ${e.message}`, 'error') }
     finally { set({ saving: false }) }
   },
 
   checkpoint() {
-    const { nodes, edges, timeline, past } = get()
-    set({ past: [...past.slice(-49), { nodes, edges, timeline }], future: [] })
+    const { nodes, edges, timeline, extras, past } = get()
+    set({ past: [...past.slice(-49), { nodes, edges, timeline, extras }], future: [] })
   },
   undo() {
-    const { past, future, nodes, edges, timeline } = get()
+    const { past, future, nodes, edges, timeline, extras } = get()
     const prev = past.at(-1)
     if (!prev) return
-    set({ ...prev, past: past.slice(0, -1), future: [{ nodes, edges, timeline }, ...future], dirty: true })
+    set({ ...prev, past: past.slice(0, -1), future: [{ nodes, edges, timeline, extras }, ...future], dirty: true })
   },
   redo() {
-    const { past, future, nodes, edges, timeline } = get()
+    const { past, future, nodes, edges, timeline, extras } = get()
     const next = future[0]
     if (!next) return
-    set({ ...next, future: future.slice(1), past: [...past, { nodes, edges, timeline }], dirty: true })
+    set({ ...next, future: future.slice(1), past: [...past, { nodes, edges, timeline, extras }], dirty: true })
   },
 
   onNodesChange(changes) {
-    if (changes.some(c => c.type === 'remove')) get().checkpoint()
+    const s = get()
+    const removed = new Set(changes.flatMap(c => (c.type === 'remove' ? [c.id] : [])))
+    if (removed.size) get().checkpoint()
     const structural = changes.some(c => c.type !== 'select' && c.type !== 'dimensions')
-    set(s => {
-      const nodes = applyNodeChanges(changes, s.nodes)
-      const alive = new Set(nodes.map(n => n.id))
-      return { nodes, timeline: s.timeline.filter(c => alive.has(c.nodeId)), dirty: s.dirty || structural }
+    const prevAll = combinedNodes(s.nodes, s.extras)
+    const byId = new Map(prevAll.map(n => [n.id, n]))
+    const groupsRemoved = new Set(s.extras.filter(x => x.type === 'group' && removed.has(x.id)).map(x => x.id))
+    const stacksRemoved = s.extras.filter((x): x is StackNode => x.type === 'stack' && removed.has(x.id))
+    // removing a group keeps its content: drop the auto-added child removals (unless the child itself was selected)
+    const effective = changes.filter(c => {
+      if (c.type !== 'remove') return true
+      const n = byId.get(c.id)
+      return !(n?.parentId && groupsRemoved.has(n.parentId) && !n.selected)
+    })
+    const all = applyNodeChanges(effective, prevAll)
+    let nodes = all.filter((n): n is CanvasNode => n.type === 'canvas')
+    let extras = all.filter((n): n is ExtraNode => n.type !== 'canvas')
+    // unparent survivors of removed groups (positions become absolute)
+    nodes = nodes.map(n => {
+      if (!n.parentId || !groupsRemoved.has(n.parentId)) return n
+      const g = byId.get(n.parentId)!
+      return { ...n, parentId: undefined, position: { x: n.position.x + g.position.x, y: n.position.y + g.position.y } }
+    })
+    // removing a stack removes everything in it (as in TapNow)
+    const gone = new Set(stacksRemoved.flatMap(st => st.data.members))
+    for (const c of effective) if (c.type === 'remove') gone.add(c.id)
+    nodes = nodes.filter(n => !gone.has(n.id))
+    // drop deleted members from surviving stacks; an empty stack dissolves
+    extras = extras.map(x => (x.type === 'stack' && x.data.members.some(m => gone.has(m)) ? { ...x, data: { ...x.data, members: x.data.members.filter(m => !gone.has(m)) } } : x))
+      .filter(x => x.type !== 'stack' || x.data.members.length > 0)
+    const alive = new Set(nodes.map(n => n.id))
+    set({
+      nodes, extras,
+      edges: gone.size ? s.edges.filter(e => alive.has(e.source) && alive.has(e.target)) : s.edges,
+      timeline: s.timeline.filter(c => alive.has(c.nodeId)), dirty: s.dirty || structural,
     })
   },
   onEdgesChange(changes) {
@@ -192,11 +239,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   },
 
   removeNode(id) {
-    get().checkpoint()
-    set(s => ({
-      nodes: s.nodes.filter(n => n.id !== id), edges: s.edges.filter(e => e.source !== id && e.target !== id),
-      timeline: s.timeline.filter(c => c.nodeId !== id), dirty: true,
-    }))
+    get().onNodesChange([{ type: 'remove', id }])
   },
 
   duplicate(ids) {
@@ -214,20 +257,22 @@ export const useStore = create<State & Actions>((set, get) => ({
   },
 
   async generate(id) {
-    const { nodes, edges, projectId } = get()
+    const { edges, projectId, extras } = get()
+    // children of groups store relative positions; ordering (first/last frame) needs absolute ones
+    const nodes = absolutize(get().nodes, extras)
     const n = nodes.find(x => x.id === id)
     if (!n || n.data.status === 'queued' || n.data.status === 'running') return
     const missing = missingUpstream(id, nodes, edges)
     if (missing.length) get().notify(`Upstream "${missing[0].data.title}" has no output yet — it will be ignored`, 'info')
-    const inputs = resolveInputs(id, nodes, edges)
-    if (n.data.kind !== 'text' && !n.data.prompt.trim() && !inputs.texts.length && !inputs.images.length) {
+    const { prompt, inputs } = expandMentions(n.data.prompt, upstreamOf(id, nodes, edges), resolveInputs(id, nodes, edges))
+    if (n.data.kind !== 'text' && !prompt.trim() && !inputs.texts.length && !inputs.images.length) {
       get().notify('Write a prompt or connect an input first', 'error')
       waiters.get(id)?.(false)
       return
     }
     get().updateData(id, { status: 'queued', progress: 0, error: undefined, message: undefined })
     try {
-      const job = await api.generate({ nodeId: id, projectId, kind: n.data.kind, model: n.data.model, prompt: n.data.prompt, params: n.data.params, inputs })
+      const job = await api.generate({ nodeId: id, projectId, kind: n.data.kind, model: n.data.model, prompt, params: n.data.params, inputs })
       // the WS "done" event can race the HTTP response — only record the job id if still pending
       const cur = get().nodes.find(x => x.id === id)
       if (cur && (cur.data.status === 'queued' || cur.data.status === 'running')) get().updateData(id, { jobId: job.id })
@@ -354,14 +399,17 @@ export const useStore = create<State & Actions>((set, get) => ({
     }
     if (job.status === 'done' && job.result) {
       const r = job.result
-      const out: Output = r.text !== undefined
-        ? { id: job.id, kind: 'text', text: r.text, model: job.model, createdAt: Date.now() }
-        : { id: r.asset!.id, kind: n.data.kind, url: r.asset!.url, mime: r.asset!.mime, prompt: r.asset!.prompt, model: job.model, createdAt: Date.now() }
+      const assets = r.assets?.length ? r.assets : r.asset ? [r.asset] : []
+      const media: Output[] = assets.map(a => ({ id: a.id, kind: n.data.kind, url: a.url, mime: a.mime, prompt: a.prompt, model: job.model, createdAt: Date.now() }))
+      const out: Output = r.text !== undefined ? { id: job.id, kind: 'text', text: r.text, model: job.model, createdAt: Date.now() } : media[0]
       let outputs = n.data.outputs
       // text nodes: keep the pre-expansion text as the first history entry so it can be restored
       if (n.data.kind === 'text' && !outputs.length && n.data.prompt.trim())
         outputs = [{ id: uid(), kind: 'text', text: n.data.prompt, createdAt: Date.now() }]
-      outputs = [...outputs, out]
+      // batch results: keep them in this node's history, or place extras as new nodes (spread / stack)
+      const mode = get().canvasSettings.resultMode
+      outputs = [...outputs, ...(mode === 'history' || r.text !== undefined ? (r.text !== undefined ? [out] : media) : [out])]
+      if (mode !== 'history' && media.length > 1) queueMicrotask(() => placeResults(n.id, media.slice(1), mode))
       get().updateData(n.id, {
         status: 'done', progress: 1, jobId: undefined, message: undefined, outputs, active: outputs.length - 1,
         ...(r.text !== undefined ? { prompt: r.text } : {}),

@@ -9,21 +9,78 @@ export function nodeValue(n: CanvasNode): { kind: NodeKind; value: string } | un
   return o?.url ? { kind: n.data.kind, value: o.url } : undefined
 }
 
+/** Upstream nodes of `nodeId`, ordered top-to-bottom so "first frame / last frame" follows the layout. */
+export function upstreamOf(nodeId: string, nodes: CanvasNode[], edges: CanvasEdge[]) {
+  const byId = new Map(nodes.map(n => [n.id, n]))
+  return edges.filter(e => e.target === nodeId).map(e => byId.get(e.source)).filter((n): n is CanvasNode => !!n)
+    .sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x)
+}
+
 /**
  * Collect upstream inputs for a node. Sources are ordered top-to-bottom on the
  * canvas so "first frame / last frame" follows the visual layout.
  */
 export function resolveInputs(nodeId: string, nodes: CanvasNode[], edges: CanvasEdge[]) {
-  const byId = new Map(nodes.map(n => [n.id, n]))
-  const sources = edges.filter(e => e.target === nodeId).map(e => byId.get(e.source)).filter((n): n is CanvasNode => !!n)
-    .sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x)
   const inputs = { texts: [] as string[], images: [] as string[], videos: [] as string[], audios: [] as string[] }
-  for (const s of sources) {
+  for (const s of upstreamOf(nodeId, nodes, edges)) {
     const v = nodeValue(s)
     if (!v) continue
     ;({ text: inputs.texts, image: inputs.images, video: inputs.videos, audio: inputs.audios })[v.kind].push(v.value)
   }
   return inputs
+}
+
+type Inputs = ReturnType<typeof resolveInputs>
+
+/**
+ * Resolve `@Title` mentions of upstream nodes in a prompt (TapNow-style references):
+ * mentioned media come first in their input list, in mention order, and the mention
+ * becomes "image 1" / "video 1" / "audio 1"; a mentioned text node is inlined in place
+ * (and not prepended again).
+ */
+export function expandMentions(prompt: string, sources: CanvasNode[], inputs: Inputs): { prompt: string; inputs: Inputs } {
+  // longest titles claim their text first, so "@Hero" is not found inside "@Hero 2"
+  const claimed: Array<[number, number]> = []
+  const firstAt = (token: string) => {
+    let at = -1
+    for (let i = prompt.indexOf(token); i >= 0; i = prompt.indexOf(token, i + 1)) {
+      if (claimed.some(([s, e]) => i < e && i + token.length > s)) continue
+      claimed.push([i, i + token.length])
+      if (at < 0) at = i
+    }
+    return at
+  }
+  const found = [...sources].sort((a, b) => b.data.title.length - a.data.title.length)
+    .map(n => ({ n, at: firstAt(`@${n.data.title}`), v: nodeValue(n) }))
+    .filter(x => x.at >= 0 && x.v)
+    .sort((a, b) => a.at - b.at)
+  if (!found.length) return { prompt, inputs }
+  const out: Inputs = { texts: [...inputs.texts], images: [...inputs.images], videos: [...inputs.videos], audios: [...inputs.audios] }
+  const lists = { image: out.images, video: out.videos, audio: out.audios } as const
+  // move mentioned media to the front, preserving mention order
+  for (const kind of ['image', 'video', 'audio'] as const) {
+    const ment = found.filter(f => f.v!.kind === kind).map(f => f.v!.value)
+    const rest = lists[kind].filter(u => !ment.includes(u))
+    lists[kind].splice(0, lists[kind].length, ...ment, ...rest)
+  }
+  let text = prompt
+  // longest titles first so "@Shot 10" is not eaten by "@Shot 1"
+  for (const f of [...found].sort((a, b) => b.n.data.title.length - a.n.data.title.length)) {
+    const kind = f.v!.kind
+    const label = kind === 'text' ? `"${f.v!.value}"` : `${kind} ${(lists[kind as 'image' | 'video' | 'audio'].indexOf(f.v!.value)) + 1}`
+    text = text.split(`@${f.n.data.title}`).join(label)
+    if (kind === 'text') out.texts = out.texts.filter(t => t !== f.v!.value)
+  }
+  return { prompt: text, inputs: out }
+}
+
+/** Copy of `nodes` with positions made absolute (children of groups are stored relative to the group). */
+export function absolutize<T extends { id: string; position: { x: number; y: number }; parentId?: string }>(nodes: T[], parents: Array<{ id: string; position: { x: number; y: number } }>): T[] {
+  const byId = new Map(parents.map(p => [p.id, p]))
+  return nodes.map(n => {
+    const p = n.parentId ? byId.get(n.parentId) : undefined
+    return p ? { ...n, position: { x: n.position.x + p.position.x, y: n.position.y + p.position.y } } : n
+  })
 }
 
 /** Upstream nodes that are generative but have no output yet. */

@@ -7,10 +7,15 @@ import type { Asset } from '../types'
 export function AssetsPanel() {
   const [assets, setAssets] = useState<Asset[]>([])
   const [filter, setFilter] = useState<'all' | Asset['kind']>('all')
+  const [q, setQ] = useState('')
+  const [scope, setScope] = useState<'project' | 'all'>('project')
+  const projectId = useStore(s => s.projectId)
   const nodes = useStore(s => s.nodes)
   const outputsCount = nodes.reduce((n, x) => n + x.data.outputs.length, 0)
   useEffect(() => { api.assets().then(setAssets) }, [outputsCount])
-  const shown = assets.filter(a => filter === 'all' || a.kind === filter)
+  // History: everything ever generated or uploaded, so outputs of deleted nodes can be recovered
+  const shown = assets.filter(a => (filter === 'all' || a.kind === filter) && (scope === 'all' || (a as Asset & { projectId?: string }).projectId === projectId)
+    && (!q || `${a.name ?? ''} ${a.prompt ?? ''} ${a.model ?? ''}`.toLowerCase().includes(q.toLowerCase())))
   const del = async (a: Asset) => {
     if (!confirm('Delete this file from disk? Nodes using it will show a broken preview.')) return
     await api.deleteAsset(a.id)
@@ -19,6 +24,12 @@ export function AssetsPanel() {
   return (
     <aside className="side-panel">
       <div className="panel-head"><Icon name="folder" /> Assets <span className="muted">{assets.length}</span></div>
+      <div className="skills-head">
+        <input placeholder="Search prompts, names, models…" value={q} onChange={e => setQ(e.target.value)} />
+        <select value={scope} onChange={e => setScope(e.target.value as 'project' | 'all')} title="History scope">
+          <option value="project">This project</option><option value="all">All projects</option>
+        </select>
+      </div>
       <div className="tabs">
         {(['all', 'image', 'video', 'audio'] as const).map(f => <button key={f} className={filter === f ? 'on' : ''} onClick={() => setFilter(f)}>{f}</button>)}
       </div>

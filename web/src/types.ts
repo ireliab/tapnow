@@ -26,16 +26,36 @@ export interface CanvasNodeData extends Record<string, unknown> {
   message?: string
   error?: string
   jobId?: string
+  /** colour pin (organisation) */
+  pin?: string
+  /** text nodes: background colour */
+  bg?: string
+  /** set while the node is collapsed into a stack */
+  stackId?: string
 }
 
 export type CanvasNode = Node<CanvasNodeData>
+
+// ---------- non-media canvas nodes ("extras") ----------
+export interface GroupData extends Record<string, unknown> { title: string; color: string }
+export interface StackData extends Record<string, unknown> { title: string; members: string[] }
+export interface CommentReply { id: string; text: string; at: number }
+export interface CommentData extends Record<string, unknown> { text: string; author: string; at: number; replies: CommentReply[] }
+export interface PlaylistClip { id: string; nodeId: string; in: number; out?: number }
+export interface PlaylistData extends Record<string, unknown> { title: string; clips: PlaylistClip[] }
+export type GroupNode = Node<GroupData, 'group'>
+export type StackNode = Node<StackData, 'stack'>
+export type CommentNode = Node<CommentData, 'comment'>
+export type PlaylistNode = Node<PlaylistData, 'playlist'>
+export type ExtraNode = GroupNode | StackNode | CommentNode | PlaylistNode
+export type AnyNode = CanvasNode | ExtraNode
 export type CanvasEdge = Edge
 
 export interface TimelineClip { id: string; nodeId: string }
 
 export interface Project {
   id: string; name: string; updatedAt: number
-  nodes: CanvasNode[]; edges: CanvasEdge[]; timeline: TimelineClip[]
+  nodes: CanvasNode[]; edges: CanvasEdge[]; timeline: TimelineClip[]; extras?: ExtraNode[]
   viewport?: { x: number; y: number; zoom: number }
 }
 
@@ -48,7 +68,7 @@ export interface ModelInfo {
 
 export interface Job {
   id: string; nodeId: string; model: string; status: 'queued' | 'running' | 'done' | 'error' | 'cancelled'
-  progress: number; message?: string; error?: string; result?: { asset?: Asset; text?: string }
+  progress: number; message?: string; error?: string; result?: { asset?: Asset; assets?: Asset[]; text?: string }
 }
 
 export interface Settings {

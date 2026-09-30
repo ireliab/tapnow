@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { agentApi } from '../agent/agentApi'
-import { useStore } from '../store'
+import { useStore, type CanvasSettings } from '../store'
 import type { Settings } from '../types'
 import { Modal } from './Chrome'
 
@@ -13,7 +13,8 @@ export function SettingsModal() {
   const open = useStore(s => s.settingsOpen)
   const { set, loadModels, notify } = useStore.getState()
   const [s, setS] = useState<Settings>()
-  const [tab, setTab] = useState<'llm' | 'comfy' | 'cloud' | 'search' | 'memory' | 'custom'>('llm')
+  const [tab, setTab] = useState<'canvas' | 'llm' | 'comfy' | 'cloud' | 'search' | 'memory' | 'custom'>('canvas')
+  const canvas = useStore(st => st.canvasSettings)
   const [memory, setMemory] = useState('')
   const [customText, setCustomText] = useState('')
   useEffect(() => {
@@ -24,6 +25,11 @@ export function SettingsModal() {
   }, [open])
   if (!open || !s) return null
 
+  const setCanvas = (patch: Partial<CanvasSettings>) => {
+    const next = { ...useStore.getState().canvasSettings, ...patch }
+    useStore.setState({ canvasSettings: next })
+    try { localStorage.setItem('taplocal:canvas', JSON.stringify(next)) } catch { /* private mode */ }
+  }
   const up = <K extends keyof Settings>(k: K, patch: Partial<Settings[K]>) => setS({ ...s, [k]: { ...(s[k] as object), ...patch } })
   const save = async () => {
     let customModels = s.customModels
@@ -49,11 +55,21 @@ export function SettingsModal() {
   return (
     <Modal title="Settings" onClose={() => set({ settingsOpen: false })} wide>
       <div className="tabs">
-        {([['llm', 'Local LLM'], ['comfy', 'ComfyUI'], ['cloud', 'Cloud APIs'], ['search', 'Web search'], ['memory', 'Agent memory'], ['custom', 'Custom models']] as const).map(([k, l]) => (
+        {([['canvas', 'Canvas'], ['llm', 'Local LLM'], ['comfy', 'ComfyUI'], ['cloud', 'Cloud APIs'], ['search', 'Web search'], ['memory', 'Agent memory'], ['custom', 'Custom models']] as const).map(([k, l]) => (
           <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
       <div className="settings-body">
+        {tab === 'canvas' && <>
+          <p className="muted">How the canvas behaves. Saved in this browser.</p>
+          <div className="field"><span>When a run makes several results (×2–×4)</span>
+            <div className="opts">
+              {([['history', 'Keep them in the node history'], ['spread', 'Spread as new nodes'], ['stack', 'Pile them into a stack']] as const).map(([k, l]) => (
+                <button key={k} className={canvas.resultMode === k ? 'on' : ''} onClick={() => setCanvas({ resultMode: k })}>{l}</button>
+              ))}
+            </div></div>
+          <label className="check"><input type="checkbox" checked={canvas.snapToGrid} onChange={e => setCanvas({ snapToGrid: e.target.checked })} /> Snap nodes to grid</label>
+        </>}
         {tab === 'llm' && <>
           <p className="muted">Powers the Agent and the "Expand" button on text nodes. Any OpenAI-compatible server works: Ollama (<code>http://localhost:11434/v1</code>), LM Studio (<code>http://localhost:1234/v1</code>), or OpenAI.</p>
           {field('Base URL', s.llm.baseUrl, v => up('llm', { baseUrl: v }))}

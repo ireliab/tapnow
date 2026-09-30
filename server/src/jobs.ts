@@ -6,7 +6,7 @@ export interface Job {
   id: string; nodeId: string; projectId?: string; model: string
   status: 'queued' | 'running' | 'done' | 'error' | 'cancelled'
   progress: number; message?: string; error?: string
-  result?: { asset?: Asset; text?: string }
+  result?: { asset?: Asset; assets?: Asset[]; text?: string }
   createdAt: number; finishedAt?: number
 }
 
@@ -72,21 +72,29 @@ async function run(job: Job, req: GenRequest) {
   Object.assign(job, { status: 'running', progress: 0.01 })
   emit(job)
   let last = 0
+  // batch count: run the provider N times (seed+i so results differ but stay reproducible)
+  const count = model.kind === 'text' ? 1 : Math.min(4, Math.max(1, Math.round(Number(req.params.count) || 1)))
   try {
-    const out = await providers[model.provider].generate(model, req, {
-      signal: ac.signal,
-      progress(p, message) {
-        job.progress = Math.max(job.progress, Math.min(p, 0.99)); job.message = message
-        if (Date.now() - last > 250) { last = Date.now(); emit(job) }
-      },
-    })
-    if ('text' in out) return finish(job, { status: 'done', progress: 1, result: { text: out.text } })
-    const media = 'bytes' in out ? out : await download(out.remoteUrl, ac.signal)
-    const url = saveBytes(media.bytes, media.mime)
-    // mock "videos" are animated SVGs; keep them classed as video for the canvas
-    const kind = model.kind === 'video' ? 'video' : kindOfMime(media.mime)
-    const asset = addAsset({ url, kind, mime: media.mime, prompt: req.prompt, model: model.id, projectId: job.projectId })
-    finish(job, { status: 'done', progress: 1, result: { asset } })
+    const assets: Asset[] = []
+    for (let i = 0; i < count; i++) {
+      const params = req.params.seed !== undefined ? { ...req.params, seed: req.params.seed + i } : req.params
+      const out = await providers[model.provider].generate(model, { ...req, params }, {
+        signal: ac.signal,
+        progress(p, message) {
+          const total = (i + p) / count
+          job.progress = Math.max(job.progress, Math.min(total, 0.99))
+          job.message = count > 1 ? `${i + 1}/${count}${message ? ` · ${message}` : ''}` : message
+          if (Date.now() - last > 250) { last = Date.now(); emit(job) }
+        },
+      })
+      if ('text' in out) return finish(job, { status: 'done', progress: 1, result: { text: out.text } })
+      const media = 'bytes' in out ? out : await download(out.remoteUrl, ac.signal)
+      const url = saveBytes(media.bytes, media.mime)
+      // mock "videos" are animated SVGs; keep them classed as video for the canvas
+      const kind = model.kind === 'video' ? 'video' : kindOfMime(media.mime)
+      assets.push(addAsset({ url, kind, mime: media.mime, prompt: req.prompt, model: model.id, projectId: job.projectId }))
+    }
+    finish(job, { status: 'done', progress: 1, result: { asset: assets[0], assets } })
   } catch (e: any) {
     finish(job, ac.signal.aborted ? { status: 'cancelled' } : { status: 'error', error: String(e?.message ?? e) })
   } finally {

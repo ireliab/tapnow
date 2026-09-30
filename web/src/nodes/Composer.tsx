@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { resolveInputs } from '../graph'
+import { useMemo, useRef, useState } from 'react'
+import { resolveInputs, upstreamOf } from '../graph'
 import { Icon } from '../icons'
 import { useStore } from '../store'
 import type { CanvasNodeData, NodeParams } from '../types'
@@ -19,6 +19,23 @@ export function Composer({ id, data, zoom }: { id: string; data: CanvasNodeData;
   const busy = data.status === 'queued' || data.status === 'running'
   const setParam = (p: Partial<NodeParams>) => updateData(id, { params: { ...data.params, ...p } })
   const groups = [...new Set(kindModels.map(m => m.provider))]
+  // @mentions of connected upstream nodes (TapNow-style references)
+  const upstream = useMemo(() => upstreamOf(id, nodes, edges), [id, nodes, edges])
+  const ta = useRef<HTMLTextAreaElement>(null)
+  const [mention, setMention] = useState<{ q: string; at: number } | null>(null)
+  const candidates = mention ? upstream.filter(n => n.data.title.toLowerCase().includes(mention.q.toLowerCase())) : []
+  const onPrompt = (v: string, caret: number) => {
+    updateData(id, { prompt: v })
+    const m = v.slice(0, caret).match(/(^|\s)@([^\s@]*)$/)
+    setMention(m && upstream.length ? { q: m[2], at: caret - m[2].length - 1 } : null)
+  }
+  const pick = (title: string) => {
+    if (!mention) return
+    const end = mention.at + 1 + mention.q.length
+    updateData(id, { prompt: data.prompt.slice(0, mention.at) + '@' + title + ' ' + data.prompt.slice(end) })
+    setMention(null)
+    requestAnimationFrame(() => ta.current?.focus())
+  }
 
   const inputChips = [
     inputs.texts.length && `${inputs.texts.length} text`,
@@ -34,9 +51,17 @@ export function Composer({ id, data, zoom }: { id: string; data: CanvasNodeData;
     <div className="composer nodrag nowheel" style={{ transform: `translateX(-50%) scale(${Math.min(2.5, Math.max(1, 1 / zoom))})` }}
       onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); generate(id) } }}>
       {data.kind !== 'text' && (
-        <textarea autoFocus value={data.prompt} rows={3}
-          placeholder={data.kind === 'video' ? 'Describe the motion, camera and action…' : data.kind === 'audio' ? 'Text to speak…' : 'Describe the image…'}
-          onChange={e => updateData(id, { prompt: e.target.value })} />
+        <div className="composer-prompt">
+          <textarea ref={ta} autoFocus value={data.prompt} rows={3}
+            placeholder={(data.kind === 'video' ? 'Describe the motion, camera and action…' : data.kind === 'audio' ? 'Text to speak…' : 'Describe the image…') + (upstream.length ? '  Type @ to reference an input' : '')}
+            onChange={e => onPrompt(e.target.value, e.target.selectionStart)}
+            onKeyDown={e => { if (mention && candidates[0] && (e.key === 'Enter' || e.key === 'Tab') && !e.ctrlKey) { e.preventDefault(); pick(candidates[0].data.title) } if (e.key === 'Escape') setMention(null) }} />
+          {mention && candidates.length > 0 && (
+            <div className="mention-pop down">
+              {candidates.map(n => <button key={n.id} onMouseDown={e => { e.preventDefault(); pick(n.data.title) }}><Icon name={n.data.kind} size={12} /> {n.data.title}</button>)}
+            </div>
+          )}
+        </div>
       )}
       {(inputChips.length > 0 || imageWarning) && (
         <div className="composer-inputs">
@@ -68,6 +93,11 @@ export function Composer({ id, data, zoom }: { id: string; data: CanvasNodeData;
         {data.kind === 'audio' && model?.provider === 'openai' && (
           <select value={data.params.voice ?? 'alloy'} onChange={e => setParam({ voice: e.target.value })}>
             {VOICES.map(v => <option key={v}>{v}</option>)}
+          </select>
+        )}
+        {data.kind !== 'text' && (
+          <select value={data.params.count ?? 1} title="Outputs per run" onChange={e => setParam({ count: Number(e.target.value) })}>
+            {[1, 2, 3, 4].map(c => <option key={c} value={c}>×{c}</option>)}
           </select>
         )}
         {data.kind !== 'text' && data.kind !== 'audio' && (

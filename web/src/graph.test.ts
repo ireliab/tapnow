@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ancestors, canConnect, layoutBatch, resolveInputs, topoOrder } from './graph'
+import { absolutize, canConnect, expandMentions, layoutBatch, resolveInputs, topoOrder, upstreamOf } from './graph'
 import type { CanvasEdge, CanvasNode, NodeKind } from './types'
 
 const node = (id: string, kind: NodeKind, y: number, extra: { prompt?: string; url?: string } = {}): CanvasNode => ({
@@ -53,5 +53,32 @@ describe('layoutBatch', () => {
   it('ignores edges from existing nodes when computing columns', () => {
     const p = layoutBatch([{ ref: 'a' }], [{ from: 'existing-id', to: 'a' }], { x: 7, y: 9 })
     expect(p.a).toEqual({ x: 7, y: 9 })
+  })
+})
+
+describe('expandMentions', () => {
+  const t = node('style', 'text', 0, { prompt: 'neon noir' })
+  t.data.title = 'Style'
+  const a = node('a', 'image', 10, { url: '/files/a.png' }); a.data.title = 'Hero'
+  const b = node('b', 'image', 20, { url: '/files/b.png' }); b.data.title = 'Hero 2'
+  const v = node('v', 'video', 30)
+  const edges = [edge('style', 'v'), edge('a', 'v'), edge('b', 'v')]
+  const nodes = [t, a, b, v]
+  it('orders mentioned images first and labels them; inlines text once', () => {
+    const r = expandMentions('Start on @Hero 2, end on @Hero, look like @Style', upstreamOf('v', nodes, edges), resolveInputs('v', nodes, edges))
+    expect(r.inputs.images).toEqual(['/files/b.png', '/files/a.png'])
+    expect(r.prompt).toBe('Start on image 1, end on image 2, look like "neon noir"')
+    expect(r.inputs.texts).toEqual([])
+  })
+  it('is a no-op without mentions', () => {
+    const inputs = resolveInputs('v', nodes, edges)
+    expect(expandMentions('plain', upstreamOf('v', nodes, edges), inputs)).toEqual({ prompt: 'plain', inputs })
+  })
+})
+
+describe('absolutize', () => {
+  it('adds the parent offset to children', () => {
+    const [c] = absolutize([{ id: 'c', parentId: 'g', position: { x: 5, y: 6 } }], [{ id: 'g', position: { x: 100, y: 200 } }])
+    expect(c.position).toEqual({ x: 105, y: 206 })
   })
 })
