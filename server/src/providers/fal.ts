@@ -33,7 +33,10 @@ export const fal: Provider = {
 
     const sub = await fetch(`https://queue.fal.run/${x.app ?? model.id}`, { method: 'POST', headers, body: JSON.stringify(input), signal: ctx.signal })
     if (!sub.ok) throw new Error(`fal submit ${sub.status}: ${await sub.text()}`)
-    const { status_url, response_url } = await sub.json() as { status_url: string; response_url: string }
+    const { status_url, response_url, cancel_url } = await sub.json() as { status_url: string; response_url: string; cancel_url?: string }
+    // cancelling locally must also stop the remote request, or fal keeps running (and billing) it
+    const onAbort = () => { if (cancel_url) fetch(cancel_url, { method: 'PUT', headers }).catch(() => {}) }
+    ctx.signal.addEventListener('abort', onAbort, { once: true })
 
     let tick = 0
     for (;;) {

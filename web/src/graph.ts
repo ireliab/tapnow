@@ -67,3 +67,54 @@ export function summarize(nodes: CanvasNode[], edges: CanvasEdge[]) {
     return `- ${n.id} [${n.data.kind}] "${n.data.title}": ${n.data.prompt.slice(0, 120) || '(empty)'}${ins.length ? ` <- ${ins.join(', ')}` : ''}${n.data.outputs.length ? ` (${n.data.outputs.length} outputs)` : ''}`
   }).join('\n')
 }
+
+/**
+ * Lay out a batch of new nodes as a left-to-right DAG: column = depth among the
+ * new nodes, a child shares its first parent's row when free, and a parent with
+ * several children is centred on them. Returns top-left positions per ref.
+ */
+export function layoutBatch(
+  specs: Array<{ ref: string }>, edges: Array<{ from: string; to: string }>,
+  origin: { x: number; y: number }, gap = { col: 420, row: 320 },
+) {
+  const refs = new Set(specs.map(s => s.ref))
+  const parents = new Map(specs.map(s => [s.ref, edges.filter(e => e.to === s.ref && refs.has(e.from)).map(e => e.from)]))
+  const col = new Map<string, number>()
+  const colOf = (r: string, seen = new Set<string>()): number => {
+    if (col.has(r)) return col.get(r)!
+    if (seen.has(r)) return 0
+    seen.add(r)
+    const ps = parents.get(r) ?? []
+    const c = ps.length ? Math.max(...ps.map(p => colOf(p, seen))) + 1 : 0
+    col.set(r, c)
+    return c
+  }
+  specs.forEach(s => colOf(s.ref))
+  const ordered = [...specs].sort((a, b) => col.get(a.ref)! - col.get(b.ref)!)
+  const row = new Map<string, number>()
+  const nextFree: number[] = []
+  for (const s of ordered) {
+    const c = col.get(s.ref)!
+    const p = parents.get(s.ref)?.[0]
+    const r = Math.max(p !== undefined ? row.get(p) ?? 0 : 0, nextFree[c] ?? 0)
+    row.set(s.ref, r)
+    nextFree[c] = r + 1
+  }
+  // centre parents over their children (deepest columns first)
+  for (const s of [...ordered].reverse()) {
+    const kids = specs.filter(k => parents.get(k.ref)?.includes(s.ref)).map(k => row.get(k.ref)!)
+    if (kids.length > 1) row.set(s.ref, kids.reduce((a, b) => a + b, 0) / kids.length)
+  }
+  return Object.fromEntries(specs.map(s => [s.ref, { x: origin.x + col.get(s.ref)! * gap.col, y: origin.y + row.get(s.ref)! * gap.row }]))
+}
+
+/** Every upstream node of `ids` (transitively), excluding `ids` themselves. */
+export function ancestors(ids: string[], edges: CanvasEdge[]) {
+  const out = new Set<string>()
+  const stack = [...ids]
+  while (stack.length) {
+    const id = stack.pop()!
+    for (const e of edges) if (e.target === id && !out.has(e.source) && !ids.includes(e.source)) { out.add(e.source); stack.push(e.source) }
+  }
+  return out
+}

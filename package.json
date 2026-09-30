@@ -2,11 +2,17 @@
   "name": "tapnow-local",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["server", "web"],
+  "workspaces": [
+    "server",
+    "web"
+  ],
   "scripts": {
     "dev": "concurrently -n server,web -c blue,magenta \"npm run dev -w server\" \"npm run dev -w web\"",
     "build": "npm run build -w web",
-    "test": "npm run test -w web"
+    "test": "npm run test -w web && npm run test -w server",
+    "dev:sandbox": "node scripts/dev-sandbox.mjs"
   },
-  "devDependencies": { "concurrently": "^9.0.0" }
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
 }

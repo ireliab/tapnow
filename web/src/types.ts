@@ -10,7 +10,7 @@ export interface Asset {
 /** One entry in a node's generation history. Text nodes store `text`; media nodes store `url`. */
 export interface Output { id: string; kind: NodeKind; url?: string; mime?: string; text?: string; prompt?: string; model?: string; createdAt: number }
 
-export interface NodeParams { aspect?: string; duration?: number; seed?: number; voice?: string; negative?: string }
+export interface NodeParams { aspect?: string; duration?: number; seed?: number; voice?: string; negative?: string; count?: number }
 
 export interface CanvasNodeData extends Record<string, unknown> {
   kind: NodeKind
@@ -56,8 +56,6 @@ export interface Settings {
   openai: { baseUrl: string; apiKey: string }
   fal: { apiKey: string }
   comfyui: { url: string; imageWorkflow: string; videoWorkflow: string }
+  search: { provider: 'tavily' | 'brave'; apiKey: string }
   customModels: Array<{ id: string; name: string; provider: 'fal'; kind: 'image' | 'video'; imageField?: string }>
 }
-
-export interface Shot { title: string; image_prompt: string; motion_prompt: string; duration: number }
-export interface AgentReply { reply: string; storyboard?: { style: string; shots: Shot[] }; source: 'llm' | 'offline' }

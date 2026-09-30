@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { agentApi } from '../agent/agentApi'
 import { useStore } from '../store'
 import type { Settings } from '../types'
 import { Modal } from './Chrome'
@@ -12,10 +13,14 @@ export function SettingsModal() {
   const open = useStore(s => s.settingsOpen)
   const { set, loadModels, notify } = useStore.getState()
   const [s, setS] = useState<Settings>()
-  const [tab, setTab] = useState<'llm' | 'comfy' | 'cloud' | 'custom'>('llm')
+  const [tab, setTab] = useState<'llm' | 'comfy' | 'cloud' | 'search' | 'memory' | 'custom'>('llm')
+  const [memory, setMemory] = useState('')
   const [customText, setCustomText] = useState('')
   useEffect(() => {
-    if (open) api.settings().then(v => { setS(v); setCustomText(JSON.stringify(v.customModels, null, 2)) })
+    if (open) {
+      api.settings().then(v => { setS(v); setCustomText(JSON.stringify(v.customModels, null, 2)) })
+      agentApi.memory().then(m => setMemory(m.join('\n'))).catch(() => {})
+    }
   }, [open])
   if (!open || !s) return null
 
@@ -29,6 +34,7 @@ export function SettingsModal() {
       try { JSON.parse(w) } catch { return notify('A ComfyUI workflow is not valid JSON', 'error') }
     }
     await api.saveSettings({ ...s, customModels })
+    await agentApi.saveMemory(memory.split('\n'))
     await loadModels()
     notify('Settings saved')
     set({ settingsOpen: false })
@@ -43,7 +49,7 @@ export function SettingsModal() {
   return (
     <Modal title="Settings" onClose={() => set({ settingsOpen: false })} wide>
       <div className="tabs">
-        {([['llm', 'Local LLM'], ['comfy', 'ComfyUI'], ['cloud', 'Cloud APIs'], ['custom', 'Custom models']] as const).map(([k, l]) => (
+        {([['llm', 'Local LLM'], ['comfy', 'ComfyUI'], ['cloud', 'Cloud APIs'], ['search', 'Web search'], ['memory', 'Agent memory'], ['custom', 'Custom models']] as const).map(([k, l]) => (
           <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
@@ -68,6 +74,18 @@ export function SettingsModal() {
           {field('fal.ai API key', s.fal.apiKey, v => up('fal', { apiKey: v }), { type: 'password', hint: 'Enables FLUX, Kling, Veo 3, Hailuo, Nano Banana…' })}
           {field('OpenAI API key', s.openai.apiKey, v => up('openai', { apiKey: v }), { type: 'password', hint: 'Enables GPT Image and TTS' })}
           {field('OpenAI base URL', s.openai.baseUrl, v => up('openai', { baseUrl: v }))}
+        </>}
+        {tab === 'search' && <>
+          <p className="muted">Lets the Agent search the web (Web Research skill, campaign research, fact checks).</p>
+          <label className="field"><span>Provider</span>
+            <select value={s.search.provider} onChange={e => up('search', { provider: e.target.value as 'tavily' | 'brave' })}>
+              <option value="tavily">Tavily</option><option value="brave">Brave Search</option>
+            </select></label>
+          {field('API key', s.search.apiKey, v => up('search', { apiKey: v }), { type: 'password', hint: s.search.provider === 'brave' ? 'api.search.brave.com — "Data for Search" plan' : 'app.tavily.com' })}
+        </>}
+        {tab === 'memory' && <>
+          <p className="muted">Preferences the Agent always follows. It adds to this list when you say "remember …". One per line.</p>
+          <textarea className="code" rows={10} value={memory} onChange={e => setMemory(e.target.value)} placeholder={'Default aspect ratio 9:16\nAlways ask before generating video'} />
         </>}
         {tab === 'custom' && <>
           <p className="muted">Add any fal.ai model by its id. Example:</p>

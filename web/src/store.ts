@@ -1,13 +1,15 @@
 import { addEdge, applyEdgeChanges, applyNodeChanges, type Connection, type EdgeChange, type NodeChange, type ReactFlowInstance, type XYPosition } from '@xyflow/react'
 import { create } from 'zustand'
 import { api } from './api'
-import { canConnect, resolveInputs, missingUpstream, topoOrder } from './graph'
-import type { Asset, CanvasEdge, CanvasNode, CanvasNodeData, Job, ModelInfo, NodeKind, Output, Shot, TimelineClip } from './types'
+import { ancestors, canConnect, layoutBatch, nodeValue, resolveInputs, missingUpstream, topoOrder } from './graph'
+import type { Asset, CanvasEdge, CanvasNode, CanvasNodeData, Job, ModelInfo, NodeKind, NodeParams, Output, TimelineClip } from './types'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
 export const NODE_WIDTH: Record<NodeKind, number> = { text: 280, image: 300, video: 360, audio: 280 }
 export const KIND_LABEL: Record<NodeKind, string> = { text: 'Text', image: 'Image', video: 'Video', audio: 'Audio' }
+
+export interface BatchNode { ref: string; kind: NodeKind; title?: string; prompt?: string; model?: string; params?: NodeParams }
 
 type Snapshot = { nodes: CanvasNode[]; edges: CanvasEdge[]; timeline: TimelineClip[] }
 type Panel = 'agent' | 'assets' | 'jobs' | null
@@ -56,13 +58,19 @@ interface Actions {
   generateAndWait: (id: string) => Promise<boolean>
   cancel: (id: string) => void
   runAll: (onlyMissing?: boolean) => Promise<void>
+  runNodes: (ids: string[]) => Promise<Array<{ id: string; title: string; status: string; output?: string; error?: string }>>
+  addNodesBatch: (specs: BatchNode[], edges: Array<{ from: string; to: string }>) => { created: Record<string, string>; skipped: string[] }
   stopAll: () => void
   handleJob: (job: Job) => void
   addToTimeline: (nodeId: string) => void
   moveClip: (id: string, dir: -1 | 1) => void
   removeClip: (id: string) => void
-  buildStoryboard: (style: string, shots: Shot[]) => void
 }
+
+/** Default model for a node that has image inputs: prefer one that accepts reference images / first frames. */
+export const defaultModelWithImages = (models: ModelInfo[], kind: NodeKind) =>
+  (models.find(m => m.kind === kind && m.available && m.provider !== 'mock' && m.maxImages > 0)
+    ?? models.find(m => m.kind === kind && m.available && m.maxImages > 0))?.id ?? defaultModel(models, kind)
 
 export const defaultModel = (models: ModelInfo[], kind: NodeKind) =>
   (models.find(m => m.kind === kind && m.available && m.provider !== 'mock') ?? models.find(m => m.kind === kind && m.available))?.id ?? `mock-${kind}`
@@ -247,10 +255,23 @@ export const useStore = create<State & Actions>((set, get) => ({
     const { nodes, edges } = get()
     const targets = topoOrder(nodes, edges).filter(n => n.data.kind !== 'text' && !(onlyMissing && n.data.outputs.length))
     if (!targets.length) return get().notify('Nothing to run — every node already has an output', 'info')
+    const results = await get().runNodes(targets.map(t => t.id))
+    const failed = results.filter(r => r.status !== 'done').length
+    get().notify(stopRequested ? 'Run stopped' : failed ? `Run finished with ${failed} failed node(s)` : `Generated ${results.length} node(s)`, failed ? 'error' : 'info')
+  },
+
+  /**
+   * Generate `ids`, first generating any upstream media nodes that still lack an
+   * output. Independent branches run in parallel (the server caps concurrency).
+   */
+  async runNodes(ids) {
+    const { nodes, edges } = get()
+    const byId = new Map(nodes.map(n => [n.id, n]))
+    const upstream = [...ancestors(ids, edges)].filter(id => { const n = byId.get(id); return n && n.data.kind !== 'text' && !nodeValue(n) })
+    const targetIds = new Set([...ids.filter(id => byId.get(id)?.data.kind !== 'text'), ...upstream])
     stopRequested = false
     set({ runningAll: true })
     const memo = new Map<string, Promise<boolean>>()
-    const targetIds = new Set(targets.map(t => t.id))
     const run = (id: string): Promise<boolean> => {
       if (!memo.has(id)) {
         memo.set(id, (async () => {
@@ -262,11 +283,63 @@ export const useStore = create<State & Actions>((set, get) => ({
       }
       return memo.get(id)!
     }
-    const results = await Promise.all(targets.map(t => run(t.id)))
+    await Promise.all([...targetIds].map(run))
     set({ runningAll: false })
-    const failed = results.filter(r => !r).length
-    get().notify(stopRequested ? 'Run stopped' : failed ? `Run finished with ${failed} failed node(s)` : `Generated ${results.length} node(s)`, failed ? 'error' : 'info')
+    return ids.map(id => {
+      const n = get().nodes.find(x => x.id === id)
+      if (!n) return { id, title: '?', status: 'missing' }
+      const v = nodeValue(n)
+      return { id, title: n.data.title, status: n.data.status === 'done' ? 'done' : n.data.status, output: v?.value, error: n.data.error }
+    })
   },
+
+  addNodesBatch(specs, edgeSpecs) {
+    const { nodes, rf, models } = get()
+    const existing = nodes.filter(n => !n.hidden)
+    const origin = existing.length
+      ? { x: Math.max(...existing.map(n => n.position.x + (n.width ?? 300))) + 160, y: Math.min(...existing.map(n => n.position.y)) }
+      : rf ? rf.screenToFlowPosition({ x: window.innerWidth * 0.25, y: window.innerHeight * 0.25 }) : { x: 0, y: 0 }
+    const pos = layoutBatch(specs, edgeSpecs, origin)
+    const created: Record<string, string> = {}
+    const counts: Record<string, number> = {}
+    const newNodes: CanvasNode[] = specs.map(sp => {
+      const kind = sp.kind
+      const id = `${kind}-${uid()}`
+      created[sp.ref] = id
+      counts[kind] = (counts[kind] ?? nodes.filter(n => n.data.kind === kind).length) + 1
+      const model = sp.model && models.some(m => m.id === sp.model && m.kind === kind && m.available) ? sp.model : defaultModel(models, kind)
+      return {
+        id, type: 'canvas', position: pos[sp.ref], width: NODE_WIDTH[kind],
+        data: {
+          kind, title: sp.title || `${KIND_LABEL[kind]} ${counts[kind]}`, prompt: sp.prompt ?? '', model,
+          params: { ...(kind === 'video' ? { aspect: '16:9', duration: 5 } : kind === 'image' ? { aspect: '16:9' } : {}), ...sp.params },
+          outputs: [], active: 0, status: 'idle',
+        },
+      }
+    })
+    const all = [...nodes, ...newNodes]
+    const kindOf = (id: string) => all.find(n => n.id === id)?.data.kind
+    const skipped: string[] = []
+    const newEdges: CanvasEdge[] = []
+    for (const e of edgeSpecs) {
+      const source = created[e.from] ?? e.from, target = created[e.to] ?? e.to
+      const a = kindOf(source), b = kindOf(target)
+      if (!a || !b || !canConnect(a, b)) { skipped.push(`${e.from}→${e.to}`); continue }
+      newEdges.push({ id: `e-${uid()}`, source, target })
+    }
+    // nodes fed by an image get a model that actually uses it (e.g. image-to-video), unless one was chosen explicitly
+    for (const n of newNodes) {
+      const spec = specs.find(sp => created[sp.ref] === n.id)!
+      const explicit = spec.model && n.data.model === spec.model
+      const fedByImage = newEdges.some(e => e.target === n.id && kindOf(e.source) === 'image')
+      if (!explicit && fedByImage && !(models.find(m => m.id === n.data.model)?.maxImages)) n.data.model = defaultModelWithImages(models, n.data.kind)
+    }
+    get().checkpoint()
+    set(s => ({ nodes: [...s.nodes.map(n => (n.selected ? { ...n, selected: false } : n)), ...newNodes], edges: [...s.edges, ...newEdges], dirty: true }))
+    requestAnimationFrame(() => get().rf?.fitView({ nodes: newNodes.map(n => ({ id: n.id })), padding: 0.15, duration: 600 }))
+    return { created, skipped }
+  },
+
   stopAll() {
     stopRequested = true
     for (const n of get().nodes) if (n.data.status === 'queued' || n.data.status === 'running') get().cancel(n.id)
@@ -314,33 +387,4 @@ export const useStore = create<State & Actions>((set, get) => ({
     })
   },
   removeClip(id) { set(s => ({ timeline: s.timeline.filter(c => c.id !== id), dirty: true })) },
-
-  buildStoryboard(style, shots) {
-    const { nodes, models } = get()
-    const maxX = nodes.length ? Math.max(...nodes.map(n => n.position.x + (n.width ?? 300))) + 160 : 0
-    const minY = nodes.length ? Math.min(...nodes.map(n => n.position.y)) : 0
-    const rowH = 300
-    const newNodes: CanvasNode[] = []
-    const newEdges: CanvasEdge[] = []
-    const clips: TimelineClip[] = []
-    const mk = (kind: NodeKind, x: number, y: number, data: Partial<CanvasNodeData>): CanvasNode => ({
-      id: `${kind}-${uid()}`, type: 'canvas', position: { x, y }, width: NODE_WIDTH[kind],
-      data: { kind, title: '', prompt: '', model: defaultModel(models, kind), params: {}, outputs: [], active: 0, status: 'idle', ...data },
-    })
-    const styleNode = mk('text', maxX, minY + ((shots.length - 1) * rowH) / 2, { title: 'Style', prompt: style })
-    newNodes.push(styleNode)
-    // prefer an image-to-video model for the animation step when one is available
-    const i2v = models.find(m => m.kind === 'video' && m.available && m.maxImages > 0 && m.provider !== 'mock')?.id ?? defaultModel(models, 'video')
-    shots.forEach((s, i) => {
-      const y = minY + i * rowH
-      const img = mk('image', maxX + 380, y, { title: `${s.title} · keyframe`, prompt: s.image_prompt, params: { aspect: '16:9' } })
-      const vid = mk('video', maxX + 760, y, { title: `${s.title} · clip`, prompt: s.motion_prompt, model: i2v, params: { aspect: '16:9', duration: s.duration } })
-      newNodes.push(img, vid)
-      newEdges.push({ id: `e-${uid()}`, source: styleNode.id, target: img.id }, { id: `e-${uid()}`, source: img.id, target: vid.id })
-      clips.push({ id: uid(), nodeId: vid.id })
-    })
-    get().checkpoint()
-    set(s => ({ nodes: [...s.nodes, ...newNodes], edges: [...s.edges, ...newEdges], timeline: [...s.timeline, ...clips], dirty: true }))
-    requestAnimationFrame(() => get().rf?.fitView({ nodes: newNodes.map(n => ({ id: n.id })), padding: 0.15, duration: 600 }))
-  },
 }))

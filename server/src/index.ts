@@ -5,7 +5,7 @@ import cors from 'cors'
 import express from 'express'
 import multer from 'multer'
 import { WebSocketServer } from 'ws'
-import { runAgent } from './agent.js'
+import { agentRouter, skillsRouter } from './agent/routes.js'
 import { cancel, enqueue, listJobs, onJobUpdate } from './jobs.js'
 import { catalog } from './providers/index.js'
 import {
@@ -61,11 +61,9 @@ app.post('/api/generate', wrap(async (req, res) => {
 app.get('/api/jobs', (_req, res) => { res.json(listJobs()) })
 app.post('/api/jobs/:id/cancel', (req, res) => { cancel(req.params.id); res.json({ ok: true }) })
 
-// agent
-app.post('/api/agent', wrap(async (req, res) => {
-  const { message, canvas, history } = req.body
-  res.json(await runAgent(String(message ?? ''), String(canvas ?? ''), history ?? []))
-}))
+// agent + skills
+app.use('/api/agent', agentRouter)
+app.use('/api/skills', skillsRouter)
 
 // production: serve the built web app
 const dist = path.join(ROOT, 'web', 'dist')

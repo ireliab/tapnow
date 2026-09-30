@@ -1,11 +1,13 @@
 import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, ReactFlowProvider, type OnConnectEnd } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import './agent/agent.css'
 import { useCallback, useEffect, useRef } from 'react'
 import { api, connectJobs } from './api'
 import CanvasNodeView from './nodes/CanvasNodeView'
 import { AddMenu, Lightbox, ProjectsModal, Toast, Toolbar, TopBar } from './panels/Chrome'
 import { SettingsModal } from './panels/SettingsModal'
-import { AgentPanel, AssetsPanel } from './panels/SidePanels'
+import { AgentPanel } from './agent/AgentPanel'
+import { AssetsPanel } from './panels/SidePanels'
 import { Timeline } from './panels/Timeline'
 import { useStore } from './store'
 import type { Asset, CanvasEdge, CanvasNode, NodeKind } from './types'
@@ -66,6 +68,7 @@ function Canvas() {
       const st = useStore.getState()
       const mod = e.ctrlKey || e.metaKey
       if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); st.save(); return }
+      if (mod && e.key.toLowerCase() === 'j') { e.preventDefault(); st.set({ panel: st.panel === 'agent' ? null : 'agent' }); return }
       if (isTyping(e)) return
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? st.redo() : st.undo() }
       else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); st.redo() }

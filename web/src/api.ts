@@ -1,4 +1,4 @@
-import type { AgentReply, Asset, Job, ModelInfo, NodeParams, Project, ProjectMeta, Settings } from './types'
+import type { Asset, Job, ModelInfo, NodeParams, Project, ProjectMeta, Settings } from './types'
 
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -33,8 +33,6 @@ export const api = {
     inputs: { texts: string[]; images: string[]; videos: string[]; audios: string[] }
   }) => req<Job>('POST', '/api/generate', body),
   cancel: (jobId: string) => req('POST', `/api/jobs/${jobId}/cancel`),
-  agent: (message: string, canvas: string, history: Array<{ role: string; content: string }>) =>
-    req<AgentReply>('POST', '/api/agent', { message, canvas, history }),
 }
 
 /** Job updates over WebSocket, with auto-reconnect. */

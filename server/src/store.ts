@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 export const ROOT = path.resolve(here, '../..')
-export const DATA = path.join(ROOT, 'data')
+export const DATA = process.env.TAPLOCAL_DATA ? path.resolve(process.env.TAPLOCAL_DATA) : path.join(ROOT, 'data')
 export const FILES = path.join(DATA, 'files')
 export const PROJECTS = path.join(DATA, 'projects')
 for (const d of [DATA, FILES, PROJECTS]) fs.mkdirSync(d, { recursive: true })
@@ -27,6 +27,7 @@ export interface Settings {
   openai: { baseUrl: string; apiKey: string }
   fal: { apiKey: string }
   comfyui: { url: string; imageWorkflow: string; videoWorkflow: string }
+  search: { provider: 'tavily' | 'brave'; apiKey: string }
   customModels: Array<{ id: string; name: string; provider: 'fal'; kind: 'image' | 'video'; imageField?: string }>
 }
 const SETTINGS_FILE = path.join(DATA, 'settings.json')
@@ -35,6 +36,7 @@ const defaults: Settings = {
   openai: { baseUrl: 'https://api.openai.com/v1', apiKey: '' },
   fal: { apiKey: '' },
   comfyui: { url: 'http://127.0.0.1:8188', imageWorkflow: '', videoWorkflow: '' },
+  search: { provider: 'tavily', apiKey: '' },
   customModels: [],
 }
 export function getSettings(): Settings {
@@ -44,6 +46,7 @@ export function getSettings(): Settings {
     openai: { ...defaults.openai, ...s.openai },
     fal: { ...defaults.fal, ...s.fal },
     comfyui: { ...defaults.comfyui, ...s.comfyui },
+    search: { ...defaults.search, ...s.search },
     customModels: s.customModels ?? [],
   }
 }
@@ -51,7 +54,7 @@ const MASK = '••••'
 const mask = (k: string) => (k ? MASK + k.slice(-4) : '')
 export function maskedSettings(): Settings {
   const s = getSettings()
-  return { ...s, llm: { ...s.llm, apiKey: mask(s.llm.apiKey) }, openai: { ...s.openai, apiKey: mask(s.openai.apiKey) }, fal: { apiKey: mask(s.fal.apiKey) } }
+  return { ...s, llm: { ...s.llm, apiKey: mask(s.llm.apiKey) }, openai: { ...s.openai, apiKey: mask(s.openai.apiKey) }, fal: { apiKey: mask(s.fal.apiKey) }, search: { ...s.search, apiKey: mask(s.search.apiKey) } }
 }
 export function saveSettings(next: Settings) {
   const cur = getSettings()
@@ -59,6 +62,7 @@ export function saveSettings(next: Settings) {
   next.llm.apiKey = keep(next.llm?.apiKey, cur.llm.apiKey)
   next.openai.apiKey = keep(next.openai?.apiKey, cur.openai.apiKey)
   next.fal.apiKey = keep(next.fal?.apiKey, cur.fal.apiKey)
+  next.search = { ...cur.search, ...next.search, apiKey: keep(next.search?.apiKey, cur.search.apiKey) }
   writeJson(SETTINGS_FILE, next)
 }
 
