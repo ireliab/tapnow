@@ -7,18 +7,6 @@ import { toDataUri } from '../store.js'
  */
 
 const hash = (s: string) => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0 }
-const esc = (s: string) => s.replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]!))
-
-function wrap(text: string, max: number, lines: number) {
-  const out: string[] = []; let cur = ''
-  for (const w of text.split(/\s+/).filter(Boolean)) {
-    if ((cur + ' ' + w).trim().length > max) { out.push(cur); cur = w } else cur = (cur + ' ' + w).trim()
-    if (out.length === lines) break
-  }
-  if (out.length < lines && cur) out.push(cur)
-  if (out.join(' ').length < text.length && out.length) out[out.length - 1] += '…'
-  return out
-}
 
 function palette(seed: number) {
   const h1 = seed % 360, h2 = (h1 + 40 + (seed >> 9) % 120) % 360
@@ -55,25 +43,20 @@ function scene(prompt: string, w: number, h: number, seed: number, images: strin
 
 function svg(prompt: string, aspect: string, seed: number, images: string[], video?: number) {
   const { width: w, height: h } = aspectToSize(aspect, 1024)
+  // the prompt only seeds colours and shapes; like a real model, the result never shows it
   const { c1, c2, body } = scene(prompt, w, h, seed, images, !!video, video ?? 0)
-  const lines = wrap(prompt || 'Untitled', Math.round(w / 26), 4)
-  const fs = Math.round(w / 38)
-  const text = lines.map((l, i) =>
-    `<text x="${w * 0.06}" y="${h - w * 0.06 - (lines.length - 1 - i) * fs * 1.35}" font-size="${fs}">${esc(l)}</text>`).join('')
   const badge = video
     ? `<g transform="translate(${w - 190},28)"><rect width="162" height="44" rx="22" fill="#000" opacity=".45"/>` +
       `<circle cx="26" cy="22" r="7" fill="#ff4d4f"><animate attributeName="opacity" values="1;.2;1" dur="1s" repeatCount="indefinite"/></circle>` +
       `<text x="44" y="30" font-size="20" fill="#fff">MOCK · ${video}s</text></g>`
     : ''
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient>
-<linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset=".45" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".7"/></linearGradient></defs>
-${body}<rect width="${w}" height="${h}" fill="url(#fade)"/>
-<g font-family="Inter,Segoe UI,Arial,sans-serif" fill="#fff" font-weight="600">${text}</g>${badge}</svg>`
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>
+${body}<g font-family="Inter,Segoe UI,Arial,sans-serif" font-weight="600">${badge}</g></svg>`
 }
 
 /** Placeholder output for an editing tool: the source image with a visible treatment + label. */
-function toolSvg(tool: string, src: string | undefined, prompt: string, mask?: string) {
+function toolSvg(tool: string, src: string | undefined, mask?: string) {
   const w = 1024, h = 1024
   const img = src ? `<image href="${toDataUri(src)}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet"/>` : `<rect width="${w}" height="${h}" fill="#333"/>`
   const label = { upscale: 'ENHANCED 2×', cutout: 'CUTOUT', inpaint: 'INPAINTED', relight: 'RELIT' }[tool] ?? tool.toUpperCase()
@@ -88,7 +71,7 @@ function toolSvg(tool: string, src: string | undefined, prompt: string, mask?: s
 <clipPath id="blob"><ellipse cx="${w / 2}" cy="${h / 2}" rx="${w * 0.36}" ry="${h * 0.42}"/></clipPath>
 <radialGradient id="light" cx="0.2" cy="0.2" r="0.9"><stop offset="0" stop-color="#ffd27a" stop-opacity=".55"/><stop offset="1" stop-color="#1a1030" stop-opacity=".55"/></radialGradient></defs>
 ${fx}<g font-family="Inter,Segoe UI,Arial,sans-serif" font-weight="700"><rect x="24" y="24" rx="20" width="${label.length * 17 + 44}" height="44" fill="#000" opacity=".55"/>
-<text x="46" y="55" font-size="22" fill="#fff">${label}</text>${prompt ? `<text x="30" y="${h - 36}" font-size="26" fill="#fff" opacity=".9">${esc(prompt.slice(0, 60))}</text>` : ''}</g></svg>`
+<text x="46" y="55" font-size="22" fill="#fff">${label}</text></g></svg>`
 }
 
 function noiseWav(seconds: number, seed: number) {
@@ -155,7 +138,7 @@ export const mock: Provider = {
     const steps = model.kind === 'video' ? 8 : 4
     for (let i = 1; i <= steps; i++) { await sleep(300, ctx.signal); ctx.progress(i / steps) }
     const prompt = [...req.inputs.texts, req.prompt].filter(Boolean).join(' ')
-    if (model.tool) return { bytes: Buffer.from(toolSvg(model.tool, req.inputs.images[0], req.prompt, req.params.mask)), mime: 'image/svg+xml' }
+    if (model.tool) return { bytes: Buffer.from(toolSvg(model.tool, req.inputs.images[0], req.params.mask)), mime: 'image/svg+xml' }
     switch (model.kind) {
       case 'text': {
         if (req.prompt.trim()) return { text: mockDocument(req.prompt.trim(), req.params.document ?? '', req.inputs.texts) }
