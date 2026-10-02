@@ -27,7 +27,8 @@
 .cnode-resize-handle { width: 9px !important; height: 9px !important; border-radius: 3px; background: #f2f2f5 !important; border: 0 !important; }
 
 .rich-text { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-.rich-text.editing { overflow-y: auto; cursor: text; }
+.rich-text.scrolling { overflow-y: auto; }
+.text-node .rich-text .tiptap { cursor: default; user-select: none; }
 .rich-text .tiptap { flex: 1; outline: none; padding: 14px 16px; font-size: 12.5px; line-height: 1.6; color: #dcdce2; }
 .rich-text .tiptap > :first-child { margin-top: 0; }
 .rich-text .tiptap p { margin: 0 0 .55em; }

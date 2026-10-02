@@ -84,8 +84,8 @@ function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
 
       <div className="cnode-card">
         {data.kind === 'text' ? (
-          <div className="text-node" style={{ background: data.bg }}>
-            <RichText id={id} value={data.prompt} selected={!!selected && !readOnly} />
+          <div className="text-node" style={{ background: data.bg }} onDoubleClick={() => !readOnly && setFull(true)} title={readOnly ? undefined : 'Double-click to edit'}>
+            <RichText value={data.prompt} selected={!!selected} />
             {busy && <div className="text-busy"><div className="shimmer" /><span>{data.status === 'queued' ? 'Queued' : data.message ?? 'Writing…'}</span></div>}
           </div>
         ) : (

@@ -74,12 +74,10 @@ export function FormatBar({ editor, markdown }: { editor: Editor; markdown: stri
   )
 }
 
-/** Text node body: the document, editable in place while the node is selected. */
-export function RichText({ id, value, selected }: { id: string; value: string; selected: boolean }) {
-  const editor = useMarkdownEditor(value, md => useStore.getState().updateData(id, { prompt: md }), {
-    editable: selected, placeholder: 'Write here, or describe what you want below and press ↑',
-  })
-  return <EditorContent editor={editor} className={`rich-text ${selected ? 'nodrag nowheel editing' : ''}`} />
+/** Text node body: a read-only preview of the document (edit it fullscreen). Scrolls while selected. */
+export function RichText({ value, selected }: { value: string; selected: boolean }) {
+  const editor = useMarkdownEditor(value, () => {}, { editable: false, placeholder: 'Double-click to write, or describe it below and press ↑' })
+  return <EditorContent editor={editor} className={`rich-text ${selected ? 'nowheel scrolling' : ''}`} />
 }
 
 /** TapNow-style full-page document editor. */

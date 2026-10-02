@@ -19,10 +19,15 @@ describe('text node generation', () => {
     expect(sys.content).toMatch(/prompt engineer/)
     expect(user.content).toBe('a fox in snow')
   })
-  it('mock writer produces a markdown script table offline', () => {
-    const doc = mockDocument('genrate a simple script for ai video', '', [])
-    expect(doc).toMatch(/^\*\*Title:\*\* Simple script for ai video/)
+  it('mock writer returns only the result, never the instruction', () => {
+    const ask = 'genrate a simple script for ai video'
+    const doc = mockDocument(ask, '', [])
     expect(doc).toContain('| Time | Visual | Voiceover |')
-    expect(mockDocument('add a closing line', 'Existing text', [])).toMatch(/^Existing text/)
+    expect(doc.toLowerCase()).not.toContain('simple script')
+    const rewrite = mockDocument('add a closing line', 'Existing text', [])
+    expect(rewrite).toMatch(/^Existing text/)
+    expect(rewrite).not.toContain('closing line')
+    // running it again doesn't stack the mock note
+    expect(mockDocument('again', rewrite, []).match(/mock writer/g)).toHaveLength(1)
   })
 })
