@@ -104,3 +104,16 @@ describe('model enable / disable', () => {
     expect(formatPrice({ unit_price: 0.1, unit: '1000 characters', currency: 'USD' })).toBe('$0.1 / 1000 characters')
   })
 })
+
+describe('unreachable messages', () => {
+  it('names the cause and hints at Tailscale / remote binding', async () => {
+    const { netError } = await import('../src/providers/check')
+    const fail = (code: string) => Object.assign(new TypeError('fetch failed'), { cause: { code } })
+    const ts = netError(fail('EACCES'), 'http://100.85.223.121:8100/v1')
+    expect(ts.message).toMatch(/blocked by this PC/)
+    expect(ts.details?.[0]).toMatch(/Tailscale/)
+    const remote = netError(Object.assign(new TypeError('fetch failed'), { cause: { errors: [{ code: 'ECONNREFUSED' }] } }), 'http://192.168.1.5:8000/v1')
+    expect(remote.message).toMatch(/connection refused/)
+    expect(remote.details?.[0]).toMatch(/0\.0\.0\.0/)
+  })
+})

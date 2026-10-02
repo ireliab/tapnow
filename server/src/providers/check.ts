@@ -33,10 +33,27 @@ async function get(url: string, headers: Record<string, string> = {}, timeout = 
   try { json = JSON.parse(text) } catch { /* not json */ }
   return { status: res.status, ok: res.ok, json, text }
 }
-const netError = (e: unknown, where: string): Result => ({
-  status: 'unreachable',
-  message: (e as Error)?.name === 'TimeoutError' ? `No answer from ${where} (timed out)` : `Can't reach ${where}`,
-})
+/** Turn a fetch failure into something actionable (refused vs. timed out vs. unknown host). */
+export function netError(e: unknown, where: string): Result {
+  const err = e as Error & { cause?: { code?: string; errors?: Array<{ code?: string }> } }
+  // undici wraps the socket error; dual-stack attempts nest it once more
+  const code = err?.cause?.code ?? err?.cause?.errors?.find(x => x.code)?.code ?? ''
+  const host = (() => { try { return new URL(where).hostname } catch { return '' } })()
+  // 100.64.0.0/10 is Tailscale's range
+  const tailscale = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host)
+  const details = [
+    ...(tailscale ? ['This is a Tailscale address — make sure Tailscale is connected on this PC (another VPN, e.g. Surfshark, can block it)'] : []),
+    ...(code === 'ECONNREFUSED' && /^(localhost|127\.|\[?::1)/.test(host) ? ['Nothing is listening there — is the server running?'] : []),
+    ...(code === 'ECONNREFUSED' && host && !/^(localhost|127\.)/.test(host) ? ['If the server runs on another machine, start it listening on all interfaces (vLLM / LM Studio: --host 0.0.0.0) and allow the port through its firewall'] : []),
+  ]
+  const why = err?.name === 'TimeoutError' || code === 'UND_ERR_CONNECT_TIMEOUT' || code === 'ETIMEDOUT' ? 'timed out'
+    : code === 'ECONNREFUSED' ? 'connection refused'
+    : code === 'ENOTFOUND' || code === 'EAI_AGAIN' ? 'unknown host'
+    : code === 'EHOSTUNREACH' || code === 'ENETUNREACH' ? 'network unreachable'
+    : code === 'EACCES' || code === 'EPERM' ? 'blocked by this PC — a VPN or firewall is stopping the connection'
+    : code || 'no connection'
+  return { status: 'unreachable', message: `Can't reach ${where} (${why})`, ...(details.length ? { details } : {}) }
+}
 
 // ---------- local LLM ----------
 async function checkLlm(s: Settings): Promise<Result> {
