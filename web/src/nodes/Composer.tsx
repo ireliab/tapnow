@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { resolveInputs, upstreamOf } from '../graph'
 import { Icon } from '../icons'
-import { useStore } from '../store'
+import { shown, useStore } from '../store'
 import type { CanvasNodeData, NodeKind, NodeParams } from '../types'
 
 const PROVIDER_LABEL: Record<string, string> = { mock: 'Offline (mock)', llm: 'Local LLM', comfyui: 'ComfyUI (local)', openai: 'OpenAI', fal: 'fal.ai' }
@@ -16,7 +16,8 @@ export function Composer({ id, data, zoom }: { id: string; data: CanvasNodeData;
   const inputs = useMemo(() => resolveInputs(id, nodes, edges), [id, nodes, edges])
   // tool nodes (enhance, cutout, …) offer that tool's models; audio nodes filter by mode
   const audioMode = data.params.audioMode ?? models.find(m => m.id === data.model)?.audioMode ?? 'speech'
-  const kindModels = models.filter(m => m.kind === data.kind && (data.tool ? m.tool === data.tool : !m.tool)
+  // models hidden in Settings stay listed only while this node still uses one
+  const kindModels = models.filter(m => m.kind === data.kind && (shown(m) || m.id === data.model) && (data.tool ? m.tool === data.tool : !m.tool)
     && (data.kind !== 'audio' || !m.audioMode || m.audioMode === audioMode))
   const model = kindModels.find(m => m.id === data.model)
   const busy = data.status === 'queued' || data.status === 'running'
@@ -105,7 +106,7 @@ export function Composer({ id, data, zoom }: { id: string; data: CanvasNodeData;
           {groups.map(g => (
             <optgroup key={g} label={PROVIDER_LABEL[g] ?? g}>
               {kindModels.filter(m => m.provider === g).map(m => (
-                <option key={m.id} value={m.id} disabled={!m.available}>{m.name}{m.available ? '' : ' — setup needed'}</option>
+                <option key={m.id} value={m.id} disabled={!m.available}>{m.name}{shown(m) ? '' : ' (hidden)'}{m.available ? '' : ' — setup needed'}</option>
               ))}
             </optgroup>
           ))}

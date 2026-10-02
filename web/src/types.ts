@@ -78,6 +78,13 @@ export interface ModelInfo {
   id: string; name: string; provider: string; kind: NodeKind; maxImages: number; requiresImage?: boolean
   aspects?: string[]; durations?: number[]; available: boolean; reason?: string
   tool?: string; audioMode?: 'speech' | 'music' | 'sfx'; needs?: Array<'video' | 'audio'>
+  /** shown in dropdowns (Settings → Models); hidden models still run on nodes that use them */
+  enabled?: boolean; paid?: boolean
+  /** fal price from the last key check */
+  price?: string
+  /** found by a provider check (e.g. extra OpenAI models) */
+  discovered?: boolean
+  extra?: Record<string, any>
 }
 
 export interface Job {
@@ -91,5 +98,15 @@ export interface Settings {
   fal: { apiKey: string }
   comfyui: { url: string; imageWorkflow: string; videoWorkflow: string }
   search: { provider: 'tavily' | 'brave'; apiKey: string }
-  customModels: Array<{ id: string; name: string; provider: 'fal'; kind: 'image' | 'video'; imageField?: string; tool?: string }>
+  customModels: CustomModel[]
+  modelPrefs: Record<string, boolean>
+  providerStatus: Partial<Record<ProviderKey, ProviderStatus>>
 }
+export interface CustomModel { id: string; name: string; provider: 'fal'; kind: 'image' | 'video' | 'audio'; imageField?: string; tool?: string }
+export type ProviderKey = 'llm' | 'comfyui' | 'fal' | 'openai' | 'search'
+export type CheckStatus = 'valid' | 'invalid' | 'unreachable' | 'warning' | 'unverified' | 'missing'
+export interface ProviderStatus {
+  status: CheckStatus; message: string; details?: string[]; fp?: string; checkedAt: number
+  models?: string[]; prices?: Record<string, string>; notFound?: string[]
+}
+export interface FalSearchResult { id: string; name: string; category: string; description: string; thumb?: string }

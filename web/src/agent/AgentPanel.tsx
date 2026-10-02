@@ -3,7 +3,7 @@ import { api } from '../api'
 import { Icon, type IconName } from '../icons'
 import { renderMarkdown } from '../markdown'
 import { useAutoResize } from '../panels/Chrome'
-import { useStore } from '../store'
+import { shown, useStore } from '../store'
 import { useAgent } from './agentStore'
 import { OutputsTab } from './OutputsTab'
 import { SkillsTab } from './SkillsTab'
@@ -212,7 +212,7 @@ function ConfirmCard({ nodeIds, onDone }: { nodeIds: string[]; onDone: (r: { app
             <span className="t" title={n.data.prompt}><Icon name={n.data.kind} size={12} /> {n.data.title}
               {m && (m.provider === 'fal' || m.provider === 'openai') && <span className="chip warn">paid · {m.provider === 'fal' ? 'fal.ai' : 'OpenAI'}</span>}</span>
             <select value={n.data.model} onChange={e => updateData(n.id, { model: e.target.value })}>
-              {models.filter(x => x.kind === n.data.kind).map(x => <option key={x.id} value={x.id} disabled={!x.available}>{x.name}</option>)}
+              {models.filter(x => x.kind === n.data.kind && (shown(x) || x.id === n.data.model)).map(x => <option key={x.id} value={x.id} disabled={!x.available}>{x.name}</option>)}
             </select>
             {m?.aspects && <select value={n.data.params.aspect ?? m.aspects[0]} onChange={e => setP({ aspect: e.target.value })}>{m.aspects.map(x => <option key={x}>{x}</option>)}</select>}
             {m?.durations && <select value={n.data.params.duration ?? m.durations[0]} onChange={e => setP({ duration: Number(e.target.value) })}>{m.durations.map(d => <option key={d} value={d}>{d}s</option>)}</select>}

@@ -1,4 +1,5 @@
-import { getSettings } from '../store.js'
+import { getSettings, type ProviderStatus, type Settings } from '../store.js'
+import { fingerprint, isOpenAiImage, type ProviderKey } from './check.js'
 import { comfyui } from './comfyui.js'
 import { fal } from './fal.js'
 import { mock } from './mock.js'
@@ -10,7 +11,7 @@ export const providers: Record<ModelInfo['provider'], Provider> = { mock, fal, o
 const IMG_AR = ['1:1', '16:9', '9:16', '4:3', '3:4']
 const VID_AR = ['16:9', '9:16', '1:1']
 
-const BUILTIN: ModelInfo[] = [
+export const BUILTIN: ModelInfo[] = [
   // offline
   { id: 'mock-text', name: 'Mock Writer', provider: 'mock', kind: 'text', maxImages: 0 },
   { id: 'mock-image', name: 'Mock Image', provider: 'mock', kind: 'image', maxImages: 4, aspects: IMG_AR },
@@ -64,24 +65,66 @@ export async function llmReachable() {
   return ok
 }
 
-export async function catalog(): Promise<Array<ModelInfo & { available: boolean; reason?: string }>> {
+export type CatalogModel = ModelInfo & {
+  available: boolean; reason?: string
+  /** shown in canvas dropdowns, the agent and MCP */
+  enabled: boolean
+  paid: boolean
+  /** fal price label from the last provider check */
+  price?: string
+  /** found by a provider check rather than built in */
+  discovered?: boolean
+}
+
+/** A provider's last check result, if it still matches the saved config. */
+export function currentStatus(p: ProviderKey, s: Settings = getSettings()): ProviderStatus | undefined {
+  const st = s.providerStatus[p]
+  return st && st.fp === fingerprint(p, s) ? st : undefined
+}
+
+// models found by the OpenAI check beyond the built-ins (off until switched on)
+function openAiExtras(s: Settings): ModelInfo[] {
+  const builtinRemotes = new Set(BUILTIN.filter(m => m.provider === 'openai').map(m => m.extra?.remote))
+  return (currentStatus('openai', s)?.models ?? []).filter(id => !builtinRemotes.has(id)).map(id => isOpenAiImage(id)
+    ? { id: `openai:${id}`, name: `OpenAI · ${id}`, provider: 'openai', kind: 'image', maxImages: id.startsWith('gpt-image') ? 4 : 0, aspects: id.startsWith('gpt-image') ? ['1:1', '16:9', '9:16'] : ['1:1'], extra: { remote: id } }
+    : { id: `openai:${id}`, name: `OpenAI · ${id}`, provider: 'openai', kind: 'audio', maxImages: 0, audioMode: 'speech', extra: { remote: id } })
+}
+
+/**
+ * Every model with availability. By default only enabled models are returned — that's what
+ * the canvas, agent and MCP offer. `all` includes hidden ones (Settings, and running a node
+ * that still points at a hidden model).
+ */
+export async function catalog(opts: { all?: boolean } = {}): Promise<CatalogModel[]> {
   const s = getSettings()
   const llmOk = await llmReachable()
+  const fal = currentStatus('fal', s)
   const custom: ModelInfo[] = s.customModels.map(m => ({
     id: `custom:${m.id}`, name: m.name || m.id, provider: 'fal', kind: m.kind, maxImages: m.imageField ? 2 : 0, tool: m.tool,
     ...(m.tool === 'video-remove' || m.tool === 'video-replace' ? { needs: ['video'] as Array<'video'> } : {}),
-    aspects: m.kind === 'video' ? VID_AR : IMG_AR, durations: m.kind === 'video' ? [5, 10] : undefined,
+    aspects: m.kind === 'video' ? VID_AR : m.kind === 'image' ? IMG_AR : undefined, durations: m.kind === 'video' ? [5, 10] : undefined,
+    ...(m.kind === 'audio' ? { audioMode: 'speech' as const } : {}),
     extra: { app: m.id, imageField: m.imageField || 'image_url' },
   }))
-  return [...BUILTIN, ...custom].map(m => {
+  const extras = new Set(openAiExtras(s).map(m => m.id))
+  const all = [...BUILTIN, ...openAiExtras(s), ...custom].map((m): CatalogModel => {
+    const app = m.extra?.app as string | undefined
     const reason =
       m.provider === 'llm' && !llmOk ? `LLM not reachable at ${s.llm.baseUrl}`
       : m.provider === 'fal' && !s.fal.apiKey ? 'Add a fal.ai key in Settings'
+      : m.provider === 'fal' && app && fal?.notFound?.includes(app) ? `fal has no model "${app}"`
       : m.provider === 'openai' && !s.openai.apiKey ? 'Add an OpenAI key in Settings'
       : m.provider === 'comfyui' && !(m.kind === 'video' ? s.comfyui.videoWorkflow : s.comfyui.imageWorkflow).trim() ? 'Paste a ComfyUI workflow in Settings'
       : undefined
-    return { ...m, name: m.provider === 'llm' ? `LLM · ${s.llm.model}` : m.name, available: !reason, reason }
+    const discovered = extras.has(m.id)
+    return {
+      ...m, name: m.provider === 'llm' ? `LLM · ${s.llm.model}` : m.name, available: !reason, reason,
+      enabled: s.modelPrefs[m.id] ?? !discovered, paid: m.provider === 'fal' || m.provider === 'openai',
+      ...(app && fal?.prices?.[app] ? { price: fal.prices[app] } : {}),
+      ...(discovered ? { discovered } : {}),
+    }
   })
+  return opts.all ? all : all.filter(m => m.enabled)
 }
 
-export const findModel = async (id: string) => (await catalog()).find(m => m.id === id)
+export const findModel = async (id: string) => (await catalog({ all: true })).find(m => m.id === id)

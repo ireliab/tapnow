@@ -1,118 +1,163 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { agentApi } from '../agent/agentApi'
-import { useStore, type CanvasSettings } from '../store'
-import type { Settings } from '../types'
+import { Icon } from '../icons'
+import { useStore } from '../store'
+import type { ModelInfo, ProviderKey, ProviderStatus, Settings } from '../types'
 import { Modal } from './Chrome'
+import { CustomModelsPage } from './settings/CustomModels'
+import { CanvasPage, ComfyPage, FalPage, LlmPage, MemoryPage, ModelsPage, OpenAiPage, SearchPage } from './settings/pages'
+import { Ctx, PROVIDER_META, StatusDot, type Page, type SettingsCtx } from './settings/shared'
+import './settings/settings.css'
 
-const COMFY_HELP = `Paste a workflow exported from ComfyUI with "Save (API format)". Use placeholders inside it:
-"{{prompt}}", "{{negative}}", "{{image}}", "{{last_image}}" (text/image-name fields) and
-"{{seed}}", "{{width}}", "{{height}}", "{{frames}}", "{{duration}}" (numeric fields — keep the quotes).`
+const PROVIDERS: ProviderKey[] = ['llm', 'comfyui', 'fal', 'openai', 'search']
+const LOCAL = new Set<ProviderKey>(['llm', 'comfyui'])
+/** the part of the form each provider check depends on */
+const slice = (p: ProviderKey, s: Settings) => JSON.stringify(p === 'fal' ? [s.fal, s.customModels.map(m => m.id)] : s[p])
+const configured = (p: ProviderKey, s: Settings) =>
+  p === 'llm' ? !!s.llm.baseUrl.trim() : p === 'comfyui' ? !!s.comfyui.url.trim() : !!(p === 'search' ? s.search : s[p]).apiKey
+const STALE = 12 * 3600_000
+const missing = (p: ProviderKey): ProviderStatus => ({ status: 'missing', message: LOCAL.has(p) ? 'Add the server URL' : 'No API key yet — add one below', checkedAt: Date.now() })
 
 export function SettingsModal() {
-  const open = useStore(s => s.settingsOpen)
-  const { set, loadModels, notify } = useStore.getState()
-  const [s, setS] = useState<Settings>()
-  const [tab, setTab] = useState<'canvas' | 'llm' | 'comfy' | 'cloud' | 'search' | 'memory' | 'custom'>('canvas')
-  const canvas = useStore(st => st.canvasSettings)
-  const [memory, setMemory] = useState('')
-  const [customText, setCustomText] = useState('')
-  useEffect(() => {
-    if (open) {
-      api.settings().then(v => { setS(v); setCustomText(JSON.stringify(v.customModels, null, 2)) })
-      agentApi.memory().then(m => setMemory(m.join('\n'))).catch(() => {})
-    }
-  }, [open])
-  if (!open || !s) return null
+  const open = useStore(st => st.settingsOpen)
+  return open ? <SettingsDialog /> : null
+}
 
-  const setCanvas = (patch: Partial<CanvasSettings>) => {
-    const next = { ...useStore.getState().canvasSettings, ...patch }
-    useStore.setState({ canvasSettings: next })
-    try { localStorage.setItem('taplocal:canvas', JSON.stringify(next)) } catch { /* private mode */ }
-  }
-  const up = <K extends keyof Settings>(k: K, patch: Partial<Settings[K]>) => setS({ ...s, [k]: { ...(s[k] as object), ...patch } })
+function SettingsDialog() {
+  const { set, loadModels, notify } = useStore.getState()
+  const models = useStore(st => st.models)
+  const [page, setPage] = useState<Page>(() => (sessionStorage.getItem('taplocal:settings-page') as Page) || 'fal')
+  const [s, setForm] = useState<Settings>()
+  const [saved, setSaved] = useState<Settings>()
+  const [memory, setMemory] = useState('')
+  const [savedMemory, setSavedMemory] = useState('')
+  const [status, setStatus] = useState<Partial<Record<ProviderKey, ProviderStatus>>>({})
+  const [checking, setChecking] = useState<Partial<Record<ProviderKey, boolean>>>({})
+  const [busy, setBusy] = useState(false)
+  const form = useRef<Settings>()
+  form.current = s
+  const lastSlice = useRef<Partial<Record<ProviderKey, string>>>({})
+  const seq = useRef<Partial<Record<ProviderKey, number>>>({})
+
+  const check = useCallback((p: ProviderKey) => {
+    const cur = form.current
+    if (!cur) return
+    lastSlice.current[p] = slice(p, cur)
+    const n = (seq.current[p] ?? 0) + 1
+    seq.current[p] = n
+    setChecking(c => ({ ...c, [p]: true }))
+    api.checkProvider(p, cur)
+      .then(r => {
+        if (seq.current[p] !== n) return // a newer check is running
+        setStatus(st => ({ ...st, [p]: r }))
+        if (p === 'fal' || p === 'openai') loadModels() // prices / discovered models when the check matched the saved key
+      })
+      .catch(e => seq.current[p] === n && setStatus(st => ({ ...st, [p]: { status: 'unreachable', message: `Check failed: ${e.message}`, checkedAt: Date.now() } })))
+      .finally(() => seq.current[p] === n && setChecking(c => ({ ...c, [p]: false })))
+  }, [loadModels])
+
+  useEffect(() => {
+    Promise.all([api.settings(), agentApi.memory().catch(() => [] as string[])]).then(([v, mem]) => {
+      setForm(v); setSaved(v); form.current = v
+      setStatus(Object.fromEntries(PROVIDERS.map(p => [p, configured(p, v) ? v.providerStatus?.[p] : missing(p)])))
+      setMemory(mem.join('\n')); setSavedMemory(mem.join('\n'))
+      for (const p of PROVIDERS) {
+        lastSlice.current[p] = slice(p, v)
+        const st = v.providerStatus?.[p]
+        // local servers come and go, so always re-check them; cloud keys at most twice a day
+        if (configured(p, v) && (!st || LOCAL.has(p) || Date.now() - st.checkedAt > STALE)) check(p)
+      }
+    })
+    loadModels()
+  }, [check, loadModels])
+
+  // re-check a provider shortly after its URL / key / model changes
+  const sig = s ? PROVIDERS.map(p => slice(p, s)).join('\u0000') : ''
+  useEffect(() => {
+    if (!s) return
+    const changed = PROVIDERS.filter(p => slice(p, s) !== lastSlice.current[p])
+    if (!changed.length) return
+    const t = setTimeout(() => changed.forEach(p => {
+      if (configured(p, s)) check(p)
+      else { lastSlice.current[p] = slice(p, s); seq.current[p] = (seq.current[p] ?? 0) + 1; setChecking(c => ({ ...c, [p]: false })); setStatus(st => ({ ...st, [p]: missing(p) })) }
+    }), 900)
+    return () => clearTimeout(t)
+  }, [sig]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const go = (p: Page) => { setPage(p); try { sessionStorage.setItem('taplocal:settings-page', p) } catch { /* ignore */ } }
+  const isOn = useCallback((m: ModelInfo) => s?.modelPrefs[m.id] ?? m.enabled ?? !m.discovered, [s])
+  const ctx = useMemo<SettingsCtx | undefined>(() => s && saved && {
+    s, saved, status, checking, check, models, isOn, go,
+    setS: setForm,
+    up: (k, patch) => setForm(f => f && { ...f, [k]: { ...(f[k] as object), ...patch } }),
+    setOn: (ids, on) => setForm(f => f && { ...f, modelPrefs: { ...f.modelPrefs, ...Object.fromEntries(ids.map(id => [id, on])) } }),
+  }, [s, saved, status, checking, check, models, isOn])
+
+  const dirty = !!s && !!saved && (JSON.stringify({ ...s, providerStatus: 0 }) !== JSON.stringify({ ...saved, providerStatus: 0 }) || memory !== savedMemory)
+  const close = () => { if (!dirty || confirm('Discard your unsaved settings changes?')) set({ settingsOpen: false }) }
+
   const save = async () => {
-    let customModels = s.customModels
-    try { customModels = JSON.parse(customText || '[]') } catch { return notify('Custom models is not valid JSON', 'error') }
-    for (const w of [s.comfyui.imageWorkflow, s.comfyui.videoWorkflow]) {
+    if (!s) return
+    for (const [label, w] of [['image', s.comfyui.imageWorkflow], ['video', s.comfyui.videoWorkflow]]) {
       if (!w.trim()) continue
       // numeric placeholders are quoted, so the template itself must parse
-      try { JSON.parse(w) } catch { return notify('A ComfyUI workflow is not valid JSON', 'error') }
+      try { JSON.parse(w) } catch { go('comfyui'); return notify(`The ComfyUI ${label} workflow is not valid JSON`, 'error') }
     }
-    await api.saveSettings({ ...s, customModels })
-    await agentApi.saveMemory(memory.split('\n'))
-    await loadModels()
-    notify('Settings saved')
-    set({ settingsOpen: false })
+    setBusy(true)
+    try {
+      // check results made with these exact values travel with the save, so badges and prices stick
+      await api.saveSettings({ ...s, providerStatus: Object.fromEntries(Object.entries(status).filter(([p, st]) => st?.fp && !checking[p as ProviderKey])) })
+      if (memory !== savedMemory) await agentApi.saveMemory(memory.split('\n'))
+      await loadModels()
+      notify('Settings saved')
+      set({ settingsOpen: false })
+    } catch (e) { notify(`Couldn't save settings: ${(e as Error).message}`, 'error') } finally { setBusy(false) }
   }
-  const field = (label: string, value: string, onChange: (v: string) => void, opts: { type?: string; placeholder?: string; hint?: string } = {}) => (
-    <label className="field"><span>{label}</span>
-      <input type={opts.type ?? 'text'} value={value} placeholder={opts.placeholder} onChange={e => onChange(e.target.value)} autoComplete="off" />
-      {opts.hint && <small>{opts.hint}</small>}
-    </label>
-  )
 
+  if (!s || !ctx) return <Modal title="Settings" onClose={close} className="settings-modal"><p className="muted pad">Loading…</p></Modal>
+
+  const shown = models.filter(isOn).length
+  const nav = (p: Page, icon: string, label: string, extra?: React.ReactNode) => (
+    <button key={p} className={page === p ? 'on' : ''} onClick={() => go(p)} aria-current={page === p ? 'page' : undefined}>
+      <Icon name={icon} size={15} /><span>{label}</span>{extra}
+    </button>
+  )
   return (
-    <Modal title="Settings" onClose={() => set({ settingsOpen: false })} wide>
-      <div className="tabs">
-        {([['canvas', 'Canvas'], ['llm', 'Local LLM'], ['comfy', 'ComfyUI'], ['cloud', 'Cloud APIs'], ['search', 'Web search'], ['memory', 'Agent memory'], ['custom', 'Custom models']] as const).map(([k, l]) => (
-          <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
-        ))}
-      </div>
-      <div className="settings-body">
-        {tab === 'canvas' && <>
-          <p className="muted">How the canvas behaves. Saved in this browser.</p>
-          <div className="field"><span>When a run makes several results (×2–×4)</span>
-            <div className="opts">
-              {([['history', 'Keep them in the node history'], ['spread', 'Spread as new nodes'], ['stack', 'Pile them into a stack']] as const).map(([k, l]) => (
-                <button key={k} className={canvas.resultMode === k ? 'on' : ''} onClick={() => setCanvas({ resultMode: k })}>{l}</button>
-              ))}
-            </div></div>
-          <label className="check"><input type="checkbox" checked={canvas.snapToGrid} onChange={e => setCanvas({ snapToGrid: e.target.checked })} /> Snap nodes to grid</label>
-        </>}
-        {tab === 'llm' && <>
-          <p className="muted">Powers the Agent and the "Expand" button on text nodes. Any OpenAI-compatible server works: Ollama (<code>http://localhost:11434/v1</code>), LM Studio (<code>http://localhost:1234/v1</code>), or OpenAI.</p>
-          {field('Base URL', s.llm.baseUrl, v => up('llm', { baseUrl: v }))}
-          {field('Model', s.llm.model, v => up('llm', { model: v }), { placeholder: 'llama3.1, qwen2.5, gpt-4o-mini…' })}
-          {field('API key (optional for local)', s.llm.apiKey, v => up('llm', { apiKey: v }), { type: 'password' })}
-        </>}
-        {tab === 'comfy' && <>
-          <p className="muted">Run image/video models on your own GPU (FLUX, SDXL, Wan, LTX-Video, HunyuanVideo…) through ComfyUI.</p>
-          {field('ComfyUI URL', s.comfyui.url, v => up('comfyui', { url: v }))}
-          <pre className="hint">{COMFY_HELP}</pre>
-          <label className="field"><span>Image workflow (API JSON)</span>
-            <textarea rows={6} value={s.comfyui.imageWorkflow} onChange={e => up('comfyui', { imageWorkflow: e.target.value })} spellCheck={false} /></label>
-          <label className="field"><span>Video workflow (API JSON)</span>
-            <textarea rows={6} value={s.comfyui.videoWorkflow} onChange={e => up('comfyui', { videoWorkflow: e.target.value })} spellCheck={false} /></label>
-        </>}
-        {tab === 'cloud' && <>
-          <p className="muted">Optional hosted models. Keys are stored only in <code>data/settings.json</code> on this machine.</p>
-          {field('fal.ai API key', s.fal.apiKey, v => up('fal', { apiKey: v }), { type: 'password', hint: 'Enables FLUX, Kling, Veo 3, Hailuo, Nano Banana…' })}
-          {field('OpenAI API key', s.openai.apiKey, v => up('openai', { apiKey: v }), { type: 'password', hint: 'Enables GPT Image and TTS' })}
-          {field('OpenAI base URL', s.openai.baseUrl, v => up('openai', { baseUrl: v }))}
-        </>}
-        {tab === 'search' && <>
-          <p className="muted">Lets the Agent search the web (Web Research skill, campaign research, fact checks).</p>
-          <label className="field"><span>Provider</span>
-            <select value={s.search.provider} onChange={e => up('search', { provider: e.target.value as 'tavily' | 'brave' })}>
-              <option value="tavily">Tavily</option><option value="brave">Brave Search</option>
-            </select></label>
-          {field('API key', s.search.apiKey, v => up('search', { apiKey: v }), { type: 'password', hint: s.search.provider === 'brave' ? 'api.search.brave.com — "Data for Search" plan' : 'app.tavily.com' })}
-        </>}
-        {tab === 'memory' && <>
-          <p className="muted">Preferences the Agent always follows. It adds to this list when you say "remember …". One per line.</p>
-          <textarea className="code" rows={10} value={memory} onChange={e => setMemory(e.target.value)} placeholder={'Default aspect ratio 9:16\nAlways ask before generating video'} />
-        </>}
-        {tab === 'custom' && <>
-          <p className="muted">Add any fal.ai model by its id. Example:</p>
-          <pre className="hint">{`[{ "id": "fal-ai/wan/v2.2-a14b/image-to-video", "name": "Wan 2.2 I2V", "provider": "fal", "kind": "video", "imageField": "image_url" }]`}</pre>
-          <textarea className="code" rows={10} value={customText} onChange={e => setCustomText(e.target.value)} spellCheck={false} />
-        </>}
-      </div>
-      <div className="modal-foot">
-        <button className="btn" onClick={() => set({ settingsOpen: false })}>Cancel</button>
-        <button className="btn primary" onClick={save}>Save</button>
-      </div>
+    <Modal title="Settings" onClose={close} className="settings-modal">
+      <Ctx.Provider value={ctx}>
+        <div className="set">
+          <nav className="set-nav">
+            <div className="set-group">General</div>
+            {nav('canvas', 'grid', 'Canvas')}
+            {nav('memory', 'brain', 'Agent memory')}
+            <div className="set-group">Providers</div>
+            {PROVIDERS.map(p => nav(p, PROVIDER_META[p].icon, PROVIDER_META[p].name, <StatusDot p={p} />))}
+            <div className="set-group">Models</div>
+            {nav('models', 'layers', 'Model manager', <span className="set-count">{shown}/{models.length}</span>)}
+            {nav('custom', 'plus', 'Custom fal models', s.customModels.length ? <span className="set-count">{s.customModels.length}</span> : undefined)}
+          </nav>
+          <div className="set-main">
+            <div className="set-page" key={page}>
+              {page === 'canvas' && <CanvasPage />}
+              {page === 'memory' && <MemoryPage memory={memory} setMemory={setMemory} />}
+              {page === 'llm' && <LlmPage />}
+              {page === 'comfyui' && <ComfyPage />}
+              {page === 'fal' && <FalPage />}
+              {page === 'openai' && <OpenAiPage />}
+              {page === 'search' && <SearchPage />}
+              {page === 'models' && <ModelsPage />}
+              {page === 'custom' && <CustomModelsPage />}
+            </div>
+            <div className="set-foot">
+              {dirty ? <span className="set-dirty"><i /> Unsaved changes</span> : <span className="muted small">Keys are stored only in <code>data/settings.json</code> on this machine.</span>}
+              <span className="spacer" />
+              <button className="btn" onClick={close}>Cancel</button>
+              <button className="btn primary" onClick={save} disabled={busy || !dirty}>{busy ? 'Saving…' : 'Save'}</button>
+            </div>
+          </div>
+        </div>
+      </Ctx.Provider>
     </Modal>
   )
 }

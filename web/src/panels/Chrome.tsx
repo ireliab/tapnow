@@ -162,7 +162,7 @@ export function ProjectsModal() {
   )
 }
 
-export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+export function Modal({ title, onClose, children, wide, className = '' }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean; className?: string }) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', k)
@@ -172,7 +172,7 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   return createPortal(
     <div className="modal-backdrop" onPointerDown={e => e.target === e.currentTarget && onClose()}
       onKeyDown={e => e.stopPropagation()} onCopy={e => e.stopPropagation()} onPaste={e => e.stopPropagation()}>
-      <div className={`modal ${wide ? 'wide' : ''}`}>
+      <div className={`modal ${wide ? 'wide' : ''} ${className}`}>
         <div className="modal-head"><h2>{title}</h2><button className="icon-btn" onClick={onClose}><Icon name="x" /></button></div>
         <div className="modal-body">{children}</div>
       </div>

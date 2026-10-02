@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { activeOutput } from '../graph'
 import { Modal } from '../panels/Chrome'
-import { defaultModelWithImages, useStore } from '../store'
+import { defaultModelWithImages, shown, useStore } from '../store'
 import { addDerived, isMock, node, rasterize, runToolNode, toolModels, uploadCanvas, videoOp } from './media'
 
 export type VideoTool = 'trim' | 'frame' | 'smart-clip' | 'continue' | 'prologue' | 'retake' | 'remove' | 'replace'
@@ -126,7 +126,7 @@ const RETAKES = {
 
 function useI2V() {
   const models = useStore(s => s.models)
-  const list = useMemo(() => models.filter(m => m.kind === 'video' && m.maxImages > 0 && !m.tool), [models])
+  const list = useMemo(() => models.filter(m => m.kind === 'video' && shown(m) && m.maxImages > 0 && !m.tool), [models])
   const [model, setModel] = useState(() => defaultModelWithImages(models, 'video'))
   return { list, model, setModel }
 }

@@ -1,4 +1,4 @@
-import type { Asset, ElementItem, Job, LibraryItem, ModelInfo, NodeParams, Project, ProjectMeta, Settings, Template } from './types'
+import type { Asset, ElementItem, FalSearchResult, Job, LibraryItem, ModelInfo, NodeParams, Project, ProjectMeta, ProviderKey, ProviderStatus, Settings, Template } from './types'
 
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -25,9 +25,13 @@ export const api = {
     if (projectId) f.append('projectId', projectId)
     return req<Asset[]>('POST', '/api/upload', f)
   },
-  models: () => req<ModelInfo[]>('GET', '/api/models'),
+  /** every model, including ones hidden in Settings (filter with `shown`) */
+  models: () => req<ModelInfo[]>('GET', '/api/models?all=1'),
   settings: () => req<Settings>('GET', '/api/settings'),
   saveSettings: (s: Settings) => req<Settings>('PUT', '/api/settings', s),
+  /** free connection check using unsaved form values (never generates) */
+  checkProvider: (p: ProviderKey, form: Partial<Settings>) => req<ProviderStatus>('POST', `/api/settings/check/${p}`, form),
+  falSearch: (q: string, category?: string) => req<FalSearchResult[]>('GET', `/api/fal/search?q=${encodeURIComponent(q)}${category ? `&category=${encodeURIComponent(category)}` : ''}`),
   generate: (body: {
     nodeId: string; projectId?: string; kind: string; model: string; prompt: string; params: NodeParams
     inputs: { texts: string[]; images: string[]; videos: string[]; audios: string[] }

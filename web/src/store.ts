@@ -97,7 +97,9 @@ interface Actions {
 
 /** Default model for a node that has image inputs: prefer one that accepts reference images / first frames. */
 // generation models only — editing tools (upscale, cutout, …) and lip-sync are never a node's default
-const plain = (m: ModelInfo, kind: NodeKind) => m.kind === kind && m.available && !m.tool && !m.needs?.length && (kind !== 'audio' || !m.audioMode || m.audioMode === 'speech')
+/** model not switched off in Settings → Models */
+export const shown = (m: ModelInfo) => m.enabled !== false
+const plain = (m: ModelInfo, kind: NodeKind) => m.kind === kind && m.available && shown(m) && !m.tool && !m.needs?.length && (kind !== 'audio' || !m.audioMode || m.audioMode === 'speech')
 
 export const defaultModelWithImages = (models: ModelInfo[], kind: NodeKind) =>
   (models.find(m => plain(m, kind) && m.provider !== 'mock' && m.maxImages > 0)

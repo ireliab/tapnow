@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../panels/Chrome'
-import { useStore } from '../store'
+import { shown, useStore } from '../store'
 import type { ModelInfo } from '../types'
 import { anglePrompt, centeredCrop, gridCells, lightPrompt, outpaintLayout, type Rect } from './geometry'
 import { MaskEditor, type MaskEditorHandle } from './MaskEditor'
@@ -27,7 +27,7 @@ const useToolModel = (tool: string) => {
 /** Image-editing models that take a reference image (for Multi-angle). */
 const useEditModel = () => {
   const models = useStore(s => s.models)
-  const list = useMemo(() => models.filter(m => m.kind === 'image' && !m.tool && m.maxImages > 0).sort((a, b) => Number(b.available) - Number(a.available) || Number(a.provider === 'mock') - Number(b.provider === 'mock')), [models])
+  const list = useMemo(() => models.filter(m => m.kind === 'image' && shown(m) && !m.tool && m.maxImages > 0).sort((a, b) => Number(b.available) - Number(a.available) || Number(a.provider === 'mock') - Number(b.provider === 'mock')), [models])
   const [model, setModel] = useState(() => list.find(m => m.available)?.id ?? '')
   return { list, model, setModel }
 }

@@ -11,7 +11,8 @@ import { libraryRouter } from './library.js'
 import { mcpRouter, setMcpBroadcast } from './mcp.js'
 import { agentRouter, skillsRouter } from './agent/routes.js'
 import { cancel, enqueue, listJobs, onJobUpdate } from './jobs.js'
-import { catalog } from './providers/index.js'
+import { catalog, currentStatus } from './providers/index.js'
+import { checkProvider, PROVIDERS, searchFal, type ProviderKey } from './providers/check.js'
 import {
   addAsset, createProject, deleteAsset, deleteProject, FILES, getProject, kindOfMime, listAssets,
   fileFromUrl, listProjects, maskedSettings, ROOT, saveBytes, saveProject, saveSettings,
@@ -73,9 +74,21 @@ app.post('/api/zip', wrap((req, res) => {
 }))
 
 // models / settings
-app.get('/api/models', wrap(async (_req, res) => { res.json(await catalog()) }))
-app.get('/api/settings', (_req, res) => { res.json(maskedSettings()) })
-app.put('/api/settings', wrap((req, res) => { saveSettings(req.body); res.json(maskedSettings()) }))
+app.get('/api/models', wrap(async (req, res) => { res.json(await catalog({ all: req.query.all === '1' })) }))
+// only send check results that still describe the saved config
+const settingsView = () => {
+  const s = maskedSettings()
+  return { ...s, providerStatus: Object.fromEntries(PROVIDERS.flatMap(p => { const st = currentStatus(p); return st ? [[p, st]] : [] })) }
+}
+app.get('/api/settings', (_req, res) => { res.json(settingsView()) })
+app.put('/api/settings', wrap((req, res) => { saveSettings(req.body); res.json(settingsView()) }))
+// free connection check with the (unsaved) form values — never generates or spends credits
+app.post('/api/settings/check/:provider', wrap(async (req, res) => {
+  const p = req.params.provider as ProviderKey
+  if (!PROVIDERS.includes(p)) throw new Error(`Unknown provider ${p}`)
+  res.json(await checkProvider(p, req.body ?? {}))
+}))
+app.get('/api/fal/search', wrap(async (req, res) => { res.json(await searchFal(String(req.query.q ?? ''), req.query.category ? String(req.query.category) : undefined)) }))
 
 // generation
 app.post('/api/generate', wrap(async (req, res) => {

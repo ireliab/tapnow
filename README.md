@@ -111,11 +111,16 @@ claude mcp add --transport http taplocal http://127.0.0.1:8787/mcp
 | **Mock** | yes | Always on. Placeholder images, animated-SVG "videos", tones and noise, plus mock versions of every editing tool, so the whole workflow runs offline |
 | **Local LLM** | yes | Any OpenAI-compatible endpoint: Ollama (`http://localhost:11434/v1`, the default) or LM Studio. Powers the Agent and text "Expand" |
 | **ComfyUI** | yes | Paste an image and/or video workflow exported with *Save (API format)*, using the placeholders `"{{prompt}}"`, `"{{image}}"`, `"{{last_image}}"`, `"{{seed}}"`, `"{{width}}"`, `"{{height}}"`, `"{{frames}}"` |
-| **fal.ai** | cloud | API key. Includes FLUX dev / Kontext / Fill, Nano Banana, Kling 2.1, Veo 3, Hailuo 02, Sync lip-sync, Clarity upscaler, BiRefNet, IC-Light, ElevenLabs TTS / SFX and Stable Audio. Add more under *Custom models*; editing tools can be added via `"tool"` |
-| **OpenAI** | cloud | API key. GPT Image (generate, and edit with references) and TTS |
+| **fal.ai** | cloud | API key. Includes FLUX dev / Kontext / Fill, Nano Banana, Kling 2.1, Veo 3, Hailuo 02, Sync lip-sync, Clarity upscaler, BiRefNet, IC-Light, ElevenLabs TTS / SFX and Stable Audio. Add more by searching fal's gallery under *Custom fal models* |
+| **OpenAI** | cloud | API key. GPT Image (generate, and edit with references) and TTS. Other image and speech models on your account are listed after the key check |
+| **Web search** | cloud | Tavily or Brave key, for the Agent's research |
+
+Each provider has its own Settings page with a **connection check** that runs as you type. The checks are free: they only list models, read prices or read usage (fal pricing API, OpenAI `/models`, Tavily `/usage`, ComfyUI `/system_stats`), and never generate. A coloured dot in the Settings sidebar shows each provider's state, and the fal page shows each model's list price.
+
+**Model manager:** switch models on or off to keep the canvas dropdowns, editing tools, the Agent and MCP short. Hidden models still run on nodes that already use them.
 
 - **Paid models:** cloud models are marked "paid" in the agent's confirm card and the tool dialogs. Cancelling a job also cancels the request on fal.ai.
-- **Model IDs change:** hosted model IDs change often. If a fal model returns 404, update its ID in `server/src/providers/index.ts` or add it under *Custom models*.
+- **Model IDs change:** hosted model IDs change often. The fal key check flags any model id fal no longer recognises ("not found on fal"); update it in `server/src/providers/index.ts` or add the new one under *Custom fal models*.
 
 ## Layout
 

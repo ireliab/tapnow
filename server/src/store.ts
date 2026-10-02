@@ -28,7 +28,25 @@ export interface Settings {
   fal: { apiKey: string }
   comfyui: { url: string; imageWorkflow: string; videoWorkflow: string }
   search: { provider: 'tavily' | 'brave'; apiKey: string }
-  customModels: Array<{ id: string; name: string; provider: 'fal'; kind: 'image' | 'video'; imageField?: string; tool?: string }>
+  customModels: Array<{ id: string; name: string; provider: 'fal'; kind: 'image' | 'video' | 'audio'; imageField?: string; tool?: string }>
+  /** model id -> shown in canvas dropdowns, the agent and MCP (unset = the model's default) */
+  modelPrefs: Record<string, boolean>
+  /** last result of each provider check (Settings badges) */
+  providerStatus: Record<string, ProviderStatus>
+}
+export type CheckStatus = 'valid' | 'invalid' | 'unreachable' | 'warning' | 'unverified' | 'missing'
+export interface ProviderStatus {
+  status: CheckStatus
+  message: string
+  details?: string[]
+  /** which config this result is for (see providers/check.ts fingerprint) */
+  fp?: string
+  /** models the provider reports: LLM ids, OpenAI image/speech ids */
+  models?: string[]
+  /** fal: price label and missing ids, keyed by endpoint id */
+  prices?: Record<string, string>
+  notFound?: string[]
+  checkedAt: number
 }
 const SETTINGS_FILE = path.join(DATA, 'settings.json')
 const defaults: Settings = {
@@ -38,6 +56,8 @@ const defaults: Settings = {
   comfyui: { url: 'http://127.0.0.1:8188', imageWorkflow: '', videoWorkflow: '' },
   search: { provider: 'tavily', apiKey: '' },
   customModels: [],
+  modelPrefs: {},
+  providerStatus: {},
 }
 export function getSettings(): Settings {
   const s = readJson<Partial<Settings>>(SETTINGS_FILE, {})
@@ -48,6 +68,8 @@ export function getSettings(): Settings {
     comfyui: { ...defaults.comfyui, ...s.comfyui },
     search: { ...defaults.search, ...s.search },
     customModels: s.customModels ?? [],
+    modelPrefs: s.modelPrefs ?? {},
+    providerStatus: s.providerStatus ?? {},
   }
 }
 const MASK = '••••'
@@ -63,7 +85,24 @@ export function saveSettings(next: Settings) {
   next.openai.apiKey = keep(next.openai?.apiKey, cur.openai.apiKey)
   next.fal.apiKey = keep(next.fal?.apiKey, cur.fal.apiKey)
   next.search = { ...cur.search, ...next.search, apiKey: keep(next.search?.apiKey, cur.search.apiKey) }
-  writeJson(SETTINGS_FILE, next)
+  writeJson(SETTINGS_FILE, { ...cur, ...next, providerStatus: { ...cur.providerStatus, ...next.providerStatus } })
+}
+/** Fill masked keys (`••••abcd`) in an unsaved form with the stored ones. */
+export function unmask(next: Partial<Settings>): Settings {
+  const cur = getSettings()
+  const keep = (v: string | undefined, old: string) => (v === undefined || v.startsWith(MASK) ? old : v)
+  return {
+    ...cur, ...next,
+    llm: { ...cur.llm, ...next.llm, apiKey: keep(next.llm?.apiKey, cur.llm.apiKey) },
+    openai: { ...cur.openai, ...next.openai, apiKey: keep(next.openai?.apiKey, cur.openai.apiKey) },
+    fal: { apiKey: keep(next.fal?.apiKey, cur.fal.apiKey) },
+    comfyui: { ...cur.comfyui, ...next.comfyui },
+    search: { ...cur.search, ...next.search, apiKey: keep(next.search?.apiKey, cur.search.apiKey) },
+  }
+}
+export function setProviderStatus(provider: string, status: ProviderStatus, patch: Partial<Settings> = {}) {
+  const cur = getSettings()
+  writeJson(SETTINGS_FILE, { ...cur, ...patch, providerStatus: { ...cur.providerStatus, [provider]: status } })
 }
 
 // ---------- assets ----------

@@ -1,6 +1,6 @@
 import { api } from '../api'
 import { activeOutput } from '../graph'
-import { defaultModelWithImages, NODE_WIDTH, useStore } from '../store'
+import { defaultModelWithImages, NODE_WIDTH, shown, useStore } from '../store'
 import type { Asset, CanvasNode, CanvasNodeData, ModelInfo, NodeKind, Output } from '../types'
 
 const S = () => useStore.getState()
@@ -66,7 +66,7 @@ export function addDerived(sourceId: string, items: Array<{ kind: NodeKind; titl
 
 /** Models for an editing tool, real providers first. */
 export const toolModels = (models: ModelInfo[], tool: string) =>
-  models.filter(m => m.tool === tool).sort((a, b) => Number(b.available) - Number(a.available) || Number(a.provider === 'mock') - Number(b.provider === 'mock'))
+  models.filter(m => m.tool === tool && shown(m)).sort((a, b) => Number(b.available) - Number(a.available) || Number(a.provider === 'mock') - Number(b.provider === 'mock'))
 
 /** Create a tool node downstream of `sourceId` and generate it. */
 export function runToolNode(sourceId: string, o: { tool?: string; title: string; prompt?: string; model?: string; params?: CanvasNodeData['params']; kind?: NodeKind }) {
