@@ -8,10 +8,11 @@ import { Icon } from '../icons'
 import { Modal } from '../panels/Chrome'
 import { useStore } from '../store'
 import type { CanvasNode, CommentNode, GroupNode, StackNode } from '../types'
+import { plainText } from '../markdown'
 
 function Thumb({ n }: { n: CanvasNode }) {
   const o = activeOutput(n)
-  if (n.data.kind === 'text') return <div className="thumb-text">{n.data.prompt.slice(0, 120) || n.data.title}</div>
+  if (n.data.kind === 'text') return <div className="thumb-text">{plainText(n.data.prompt).slice(0, 120) || n.data.title}</div>
   if (!o?.url) return <div className="thumb-empty"><Icon name={n.data.kind} size={20} /></div>
   if (n.data.kind === 'audio') return <div className="thumb-empty"><Icon name="audio" size={20} /></div>
   if (n.data.kind === 'video' && !o.mime?.includes('svg')) return <video src={o.url} muted />

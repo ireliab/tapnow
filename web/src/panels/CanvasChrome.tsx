@@ -90,7 +90,7 @@ export function SearchOverlay() {
   useEffect(() => { if (open) { setHi(0); setTimeout(() => input.current?.select(), 0) } }, [open])
   const results = useMemo(() => {
     const t = q.toLowerCase().trim()
-    return nodes.filter(n => (kind === 'all' || n.data.kind === kind) && (!t || `${n.data.title} ${n.data.prompt}`.toLowerCase().includes(t))).slice(0, 30)
+    return nodes.filter(n => (kind === 'all' || n.data.kind === kind) && (!t || `${n.data.title} ${n.data.prompt} ${(n.data.tags ?? []).map(x => '#' + x).join(' ')}`.toLowerCase().includes(t))).slice(0, 30)
   }, [q, kind, nodes])
   if (!open) return null
   const go = (id: string) => { focusNode(id); set({ searchOpen: false }) }

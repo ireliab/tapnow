@@ -1,4 +1,4 @@
-import { Handle, Position, useStore as useFlow, type NodeProps } from '@xyflow/react'
+import { Handle, NodeResizer, Position, useStore as useFlow, type NodeProps } from '@xyflow/react'
 import { memo, useRef, useState } from 'react'
 import { api } from '../api'
 import { activeOutput } from '../graph'
@@ -7,9 +7,10 @@ import { KIND_LABEL, useStore } from '../store'
 import type { CanvasNode, Output } from '../types'
 import { Composer } from './Composer'
 import { SaveToLibraryDialog } from '../panels/LibraryPanel'
-import { TextBody } from './TextBody'
-import { ToolsMenu } from '../tools/ToolsMenu'
+import { NodeActions } from './NodeActions'
+import { FullscreenDoc, RichText } from './RichText'
 import { Waveform } from '../tools/Waveform'
+import './nodes.css'
 
 function AudioPlayer({ url }: { url: string }) {
   const [p, setP] = useState(0)
@@ -33,12 +34,14 @@ export function Media({ output, controls = true }: { output: Output; controls?: 
 const ASPECT: Record<string, string> = { '1:1': '1 / 1', '16:9': '16 / 9', '9:16': '9 / 16', '4:3': '4 / 3', '3:4': '3 / 4' }
 
 function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
-  const { updateData, removeNode, duplicate, addToTimeline, set, projectId, notify } = useStore.getState()
+  const { updateData, set, projectId, notify } = useStore.getState()
   const readOnly = useStore(s => s.readOnly)
-  const inTimeline = useStore(s => s.extras.some(e => e.type === 'playlist' && e.data.clips.some(c => c.nodeId === id)))
   const zoom = useFlow(s => s.transform[2])
   const fileRef = useRef<HTMLInputElement>(null)
   const [saving, setSaving] = useState(false)
+  const [full, setFull] = useState(false)
+  // floating UI keeps a readable size when zoomed out
+  const scale = Math.min(2.5, Math.max(1, 1 / zoom))
   const out = activeOutput({ data } as CanvasNode)
   const busy = data.status === 'queued' || data.status === 'running'
   // only show the composer for a single selected node
@@ -56,25 +59,17 @@ function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
 
   return (
     <div className={`cnode kind-${data.kind} ${selected ? 'selected' : ''} status-${data.status}`}>
+      {data.kind === 'text' && !readOnly && <NodeResizer isVisible={!!selected} minWidth={200} minHeight={120} lineClassName="cnode-resize-line" handleClassName="cnode-resize-handle" />}
       <div className="cnode-label" style={{ visibility: zoom < 0.35 ? 'hidden' : undefined }}>
-        <Icon name={data.kind} size={13} />
-        {data.pin && <i className="swatch pin-dot" style={{ background: data.pin }} title="Pinned" />}
-        <input className="nodrag title-input" value={data.title} onChange={e => updateData(id, { title: e.target.value })} />
+        <Icon name={data.kind === 'text' ? 'list' : data.kind} size={14} />
+        {data.pin && <i className="swatch pin-dot" style={{ background: data.pin }} title="Label colour" />}
+        <input className="nodrag title-input" value={data.title} onChange={e => updateData(id, { title: e.target.value })} size={Math.max(4, data.title.length)} />
+        {data.tags?.map(t => <span key={t} className="cnode-tag">#{t}</span>)}
       </div>
 
       {selected && !readOnly && (
-        <div className="cnode-toolbar nodrag" style={{ transform: `translateX(-50%) scale(${Math.min(2.5, Math.max(1, 1 / zoom))})` }}>
-          <ToolsMenu id={id} data={data} />
-          {data.kind !== 'text' && <button title="Upload file" onClick={() => fileRef.current?.click()}><Icon name="upload" /></button>}
-          {out?.url && <button title="View" onClick={() => set({ lightbox: out })}><Icon name="expand" /></button>}
-          {out?.url && <a title="Download" href={out.url} download><Icon name="download" /></a>}
-          {(data.kind === 'video' || data.kind === 'image') && (
-            <button title={inTimeline ? 'In a playlist' : 'Add to playlist'} disabled={inTimeline} onClick={() => addToTimeline(id)}><Icon name={inTimeline ? 'check' : 'timeline'} /></button>
-          )}
-          <button title="Save to library" onClick={() => setSaving(true)}><Icon name="folder" /></button>
-          <button title="Duplicate (Ctrl+D)" onClick={() => duplicate([id])}><Icon name="copy" /></button>
-          <button title="Delete" onClick={() => removeNode(id)}><Icon name="trash" /></button>
-        </div>
+        <NodeActions id={id} data={data} scale={scale} onUpload={() => fileRef.current?.click()} onSave={() => setSaving(true)}
+          onFullscreen={() => (data.kind === 'text' ? setFull(true) : out?.url && set({ lightbox: out }))} />
       )}
 
       <Handle type="target" position={Position.Left} className="port port-in"><Icon name="plus" size={12} /></Handle>
@@ -89,7 +84,10 @@ function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
 
       <div className="cnode-card">
         {data.kind === 'text' ? (
-          <TextBody id={id} data={data} selected={!!selected} />
+          <div className="text-node" style={{ background: data.bg }}>
+            <RichText id={id} value={data.prompt} selected={!!selected && !readOnly} />
+            {busy && <div className="text-busy"><div className="shimmer" /><span>{data.status === 'queued' ? 'Queued' : data.message ?? 'Writing…'}</span></div>}
+          </div>
         ) : (
           <div className="media" style={{ aspectRatio: data.kind === 'audio' ? undefined : ASPECT[data.params.aspect ?? '16:9'] }}
             onDoubleClick={() => out?.url && set({ lightbox: out })}>
@@ -125,7 +123,8 @@ function CanvasNodeView({ id, data, selected }: NodeProps<CanvasNode>) {
       </div>
 
       <input ref={fileRef} type="file" hidden accept={`${data.kind}/*`} onChange={e => { onUpload(e.target.files); e.target.value = '' }} />
-      {soloSelected && !readOnly && <Composer id={id} data={data} zoom={zoom} />}
+      {soloSelected && !readOnly && <Composer id={id} data={data} zoom={zoom} onUpload={() => fileRef.current?.click()} />}
+      {full && <FullscreenDoc id={id} onClose={() => setFull(false)} />}
       {saving && <SaveToLibraryDialog node={{ id, data } as CanvasNode} onClose={() => setSaving(false)} />}
     </div>
   )

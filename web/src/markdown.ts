@@ -39,3 +39,14 @@ export function renderMarkdown(src: string) {
   flushPara(); closeList()
   return out.join('')
 }
+
+/** Markdown → one line of plain text, for previews and thumbnails. */
+export function plainText(src: string) {
+  return src
+    .replace(/^\s*\|?\s*:?-{3,}.*$/gm, '')
+    .replace(/[*_`#>|]+/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s*([-+]|\d+\.)\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}

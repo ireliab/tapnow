@@ -9,6 +9,8 @@ export interface GenRequest {
     mask?: string
     /** tool-specific settings, e.g. upscale factor */
     tool?: Record<string, unknown>
+    /** text nodes: the node's current content, which the instruction in `prompt` writes or rewrites */
+    document?: string
   }
   /** Upstream outputs, as local `/files/..` URLs (or plain text). Image order matters: [first frame, last frame]. */
   inputs: { texts: string[]; images: string[]; videos: string[]; audios: string[] }

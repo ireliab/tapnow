@@ -16,13 +16,19 @@ export interface NodeParams {
   speed?: number; pitch?: number; audioMode?: 'speech' | 'music' | 'sfx'
   /** editing tools: inpaint mask url and tool settings */
   mask?: string; tool?: Record<string, unknown>
+  /** text nodes (sent with the job): the current document the instruction rewrites */
+  document?: string
 }
 
 export interface CanvasNodeData extends Record<string, unknown> {
   kind: NodeKind
   title: string
-  /** text nodes: the content; media nodes: the generation prompt */
+  /** text nodes: the document (markdown); media nodes: the generation prompt */
   prompt: string
+  /** text nodes: the instruction typed in the composer that writes / rewrites the document */
+  ask?: string
+  /** short labels shown by the title and matched by node search */
+  tags?: string[]
   model: string
   params: NodeParams
   outputs: Output[]

@@ -86,7 +86,6 @@ code { background: var(--card-2); padding: 1px 5px; border-radius: 4px; }
 .cnode.selected .cnode-card { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124, 108, 255, .18), 0 12px 40px rgba(0,0,0,.5); }
 .cnode.status-running .cnode-card, .cnode.status-queued .cnode-card { border-color: var(--accent-2); }
 .cnode.status-error .cnode-card { border-color: rgba(255, 93, 108, .6); }
-.text-body { display: block; width: 100%; min-height: 150px; resize: vertical; background: transparent; border: 0; padding: 14px; line-height: 1.5; outline: none; }
 .media { position: relative; background: #111114; display: grid; place-items: center; min-height: 64px; }
 .media img, .media video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .media audio { width: calc(100% - 20px); margin: 14px 10px; }
@@ -102,24 +101,11 @@ code { background: var(--card-2); padding: 1px 5px; border-radius: 4px; }
 .history button.on { border-color: var(--accent); }
 .history img, .history video { width: 100%; height: 100%; object-fit: cover; }
 
-.port { width: 22px !important; height: 22px !important; border-radius: 50% !important; background: var(--card-2) !important; border: 1px solid var(--line-2) !important; display: grid; place-items: center; color: var(--muted); opacity: 0; transition: opacity .15s, transform .15s; }
-.port svg { pointer-events: none; }
-.cnode:hover .port, .cnode.selected .port, .react-flow__node.connectable .port { opacity: 1; }
-.port:hover { transform: translate(-50%, -50%) scale(1.2) !important; background: var(--accent) !important; color: #fff; border-color: var(--accent) !important; }
-.port-in { left: -11px !important; }
-.port-out { right: -11px !important; }
-.port-out:hover { transform: translate(50%, -50%) scale(1.2) !important; }
 
 .cnode-toolbar { position: absolute; bottom: calc(100% + 32px); left: 50%; transform-origin: bottom center; display: flex; gap: 2px; padding: 4px; background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.4); z-index: 10; }
 .cnode-toolbar button, .cnode-toolbar a { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 7px; color: var(--muted); }
 .cnode-toolbar button:hover:not(:disabled), .cnode-toolbar a:hover { background: var(--card-2); color: var(--text); }
 
-.composer { position: absolute; top: calc(100% + 12px); left: 50%; width: max(100%, 440px); transform-origin: top center; background: var(--panel); border: 1px solid var(--line-2); border-radius: 14px; padding: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.55); z-index: 10; cursor: default; }
-.composer textarea { width: 100%; resize: none; background: transparent; border: 0; outline: none; line-height: 1.5; padding: 2px 4px 8px; }
-.composer-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.composer select, .composer .seed { height: 28px; background: var(--card-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 0 8px; outline: none; max-width: 200px; }
-.composer .seed { width: 72px; }
-.composer-inputs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
 .chip { font-size: 11px; padding: 3px 8px; border-radius: 99px; background: var(--card-2); }
 .chip.ghost { color: var(--muted); border: 1px solid var(--line-2); background: none; }
 .chip.warn { color: var(--warn); background: rgba(245, 185, 74, .1); }

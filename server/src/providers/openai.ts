@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import { fileFromUrl, getSettings, mimeOfFile } from '../store.js'
-import type { Provider } from './types.js'
+import type { GenRequest, Provider } from './types.js'
 
 /** Chat completion against any OpenAI-compatible endpoint (Ollama, LM Studio, OpenAI, …). */
 export async function chat(messages: Array<{ role: string; content: string }>, opts: { json?: boolean; signal?: AbortSignal } = {}) {
@@ -16,15 +16,31 @@ export async function chat(messages: Array<{ role: string; content: string }>, o
   return String(out.choices?.[0]?.message?.content ?? '')
 }
 
-/** Text node "expand": turns a rough idea + upstream context into a production prompt. */
+const WRITER = `You write for AI video creators: scripts, shot lists, storyboards, prompts, captions and notes.
+Follow the instruction. If a current document is given, rewrite or extend it as instructed instead of starting over.
+Use Markdown (headings, **bold**, lists, tables) where it helps. Reply with the document only, no preamble.`
+const EXPANDER = 'You are a prompt engineer for AI image and video generation. Rewrite the user idea into one vivid, concrete prompt (subject, setting, lighting, camera, style). Reply with the prompt only.'
+
+/** Messages for a text node: an instruction writes/rewrites the document; no instruction expands it into a prompt. */
+export function textMessages(req: GenRequest) {
+  const ask = req.prompt.trim()
+  const doc = req.params.document?.trim() ?? ''
+  if (!ask) return [{ role: 'system', content: EXPANDER }, { role: 'user', content: [...req.inputs.texts, doc].filter(Boolean).join('\n\n') }]
+  const parts = [
+    req.inputs.texts.length ? `Reference material from connected nodes:\n${req.inputs.texts.join('\n\n---\n\n')}` : '',
+    doc ? `Current document:\n${doc}` : '',
+    `Instruction: ${ask}`,
+  ]
+  return [{ role: 'system', content: WRITER }, { role: 'user', content: parts.filter(Boolean).join('\n\n') }]
+}
+
+/** Text nodes: write or rewrite the node's document from an instruction (or expand it into a prompt). */
 export const llm: Provider = {
   async generate(_model, req, ctx) {
     ctx.progress(0.2, 'thinking')
-    const text = await chat([
-      { role: 'system', content: 'You are a prompt engineer for AI image and video generation. Rewrite the user idea into one vivid, concrete prompt (subject, setting, lighting, camera, style). Reply with the prompt only.' },
-      { role: 'user', content: [...req.inputs.texts, req.prompt].filter(Boolean).join('\n\n') },
-    ], { signal: ctx.signal })
-    return { text: text.trim() }
+    const text = await chat(textMessages(req), { signal: ctx.signal })
+    // reasoning models (Qwen3, DeepSeek-R1) may leak their thinking block
+    return { text: text.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, '').trim() }
   },
 }
 

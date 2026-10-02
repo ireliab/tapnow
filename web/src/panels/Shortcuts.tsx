@@ -4,7 +4,7 @@ import { Modal } from './Chrome'
 
 const GROUPS: Array<[string, Array<[string, string]>]> = [
   ['Canvas', [['T  I  V  A', 'Add text / image / video / audio node'], ['Double-click', 'Add node at cursor'], ['Ctrl C / Ctrl V', 'Copy / paste nodes'], ['Ctrl D', 'Duplicate'], ['Delete', 'Delete selection'], ['Ctrl Z / Ctrl Shift Z', 'Undo / redo'], ['Ctrl F', 'Search nodes'], ['Ctrl + / Ctrl −', 'Zoom in / out'], ['Space + drag', 'Pan'], ['C', 'Comment mode'], ['Ctrl S', 'Save now']]],
-  ['Agent', [['Ctrl J', 'Open / close Agent'], ['Ctrl I', 'Point to Edit — send the selection to the Agent'], ['Hold V', 'Voice input (release to finish)'], ['@', 'Reference a node or element'], ['Ctrl Enter', 'Generate the selected node']]],
+  ['Agent', [['Ctrl J', 'Open / close Agent'], ['Ctrl I', 'Point to Edit — send the selection to the Agent'], ['Hold V', 'Voice input (release to finish)'], ['@', 'Reference a node or element'], ['Enter', 'Generate from the prompt panel (Shift Enter for a new line)']]],
   ['Playlist editor', [['C', 'Split at playhead'], ['Q / E', 'Trim clip left / right to playhead'], ['Delete', 'Remove selected clip']]],
 ]
 
@@ -33,23 +33,31 @@ type Recognition = { start(): void; stop(): void; abort(): void; lang: string; i
 let rec: Recognition | null = null
 let base = ''
 
-export function startVoice() {
+/** Where dictated text goes: the Agent's draft by default, or a node's prompt box. */
+export interface VoiceTarget { get(): string; set(text: string): void; done?(): void }
+const agentTarget = (): VoiceTarget => {
+  useStore.setState({ panel: 'agent' })
+  useAgent.getState().set({ tab: 'chat' })
+  return {
+    get: () => useAgent.getState().draft.text,
+    set: text => useAgent.setState(s => ({ draft: { ...s.draft, text } })),
+    done: () => useAgent.getState().focusComposer(),
+  }
+}
+
+export function startVoice(target?: VoiceTarget) {
   const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
   if (!SR) { useStore.getState().notify('Voice input is not supported in this browser', 'error'); return false }
-  const a = useAgent.getState()
-  useStore.setState({ panel: 'agent' })
-  a.set({ tab: 'chat' })
-  base = a.draft.text ? a.draft.text.trimEnd() + ' ' : ''
+  rec?.abort()
+  const t = target ?? agentTarget()
+  base = t.get() ? t.get().trimEnd() + ' ' : ''
   rec = new SR() as Recognition
   rec.lang = navigator.language || 'en-US'
   rec.interimResults = true
   rec.continuous = true
-  rec.onresult = e => {
-    const said = [...e.results].map((r: any) => r[0].transcript).join('')
-    useAgent.setState(s => ({ draft: { ...s.draft, text: base + said } }))
-  }
+  rec.onresult = e => t.set(base + [...e.results].map((r: any) => r[0].transcript).join(''))
   rec.onerror = e => { if (e.error !== 'aborted') useStore.getState().notify(`Voice input: ${e.error}`, 'error') }
-  rec.onend = () => { rec = null; useStore.setState({ listening: false }); useAgent.getState().focusComposer() }
+  rec.onend = () => { rec = null; useStore.setState({ listening: false }); t.done?.() }
   rec.start()
   useStore.setState({ listening: true })
   return true

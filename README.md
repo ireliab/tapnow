@@ -31,7 +31,8 @@ npm run dev          # API on 127.0.0.1:8787, UI on http://localhost:5173
 | **Web search** | Tavily or Brave (add a key in Settings → Web search) |
 
 ### Canvas
-- **Nodes:** text (rich markdown with format bar, background colours, full-screen editor), image, video, audio.
+- **Nodes:** text, image, video, audio. Selecting a node shows a pill toolbar above it (colour, tags, edit tools, duplicate, save to library, fullscreen, ⋯ more) and a prompt panel below it (**+** to add a connected reference, model picker, aspect / duration / camera / settings chips, dictation, result count, send).
+- **Text nodes** are documents: edit them in place (formatted, WYSIWYG) or fullscreen with a format bar. Type an instruction in the panel below ("write a 30-second script about…", "make it punchier") and the LLM writes or rewrites the document. Content is stored as markdown, so connected nodes and `@mentions` read it as before.
 - **Organisation:** groups (frames), **stacks** (piles of up to 50, with a gallery), colour pins with a pin bar, comments with replies, and node search (`Ctrl+F`).
 - **Selection toolbar:** create one downstream node connected to all selected, stack, group, create playlist, zip download, send to the Agent, pin, save as template.
 - **Wiring:**
@@ -101,7 +102,7 @@ claude mcp add --transport http taplocal http://127.0.0.1:8787/mcp
 | Zoom in / out | `Ctrl + =` / `Ctrl + -` |
 | Pan | `Space` + drag |
 | Comment mode | `C` |
-| Generate the selected node | `Ctrl+Enter` |
+| Generate from the prompt panel | `Enter` (`Shift+Enter` for a new line) |
 | Save now | `Ctrl+S` |
 
 ## Model providers (Settings ⚙)
@@ -109,7 +110,7 @@ claude mcp add --transport http taplocal http://127.0.0.1:8787/mcp
 | Provider | Local? | Setup |
 | --- | --- | --- |
 | **Mock** | yes | Always on. Placeholder images, animated-SVG "videos", tones and noise, plus mock versions of every editing tool, so the whole workflow runs offline |
-| **Local LLM** | yes | Any OpenAI-compatible endpoint: Ollama (`http://localhost:11434/v1`, the default) or LM Studio. Powers the Agent and text "Expand" |
+| **Local LLM** | yes | Any OpenAI-compatible endpoint: Ollama (`http://localhost:11434/v1`, the default) or LM Studio. Powers the Agent and writing in text nodes |
 | **ComfyUI** | yes | Paste an image and/or video workflow exported with *Save (API format)*, using the placeholders `"{{prompt}}"`, `"{{image}}"`, `"{{last_image}}"`, `"{{seed}}"`, `"{{width}}"`, `"{{height}}"`, `"{{frames}}"` |
 | **fal.ai** | cloud | API key. Includes FLUX dev / Kontext / Fill, Nano Banana, Kling 2.1, Veo 3, Hailuo 02, Sync lip-sync, Clarity upscaler, BiRefNet, IC-Light, ElevenLabs TTS / SFX and Stable Audio. Add more by searching fal's gallery under *Custom fal models* |
 | **OpenAI** | cloud | API key. GPT Image (generate, and edit with references) and TTS. Other image and speech models on your account are listed after the key check |

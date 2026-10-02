@@ -56,18 +56,5 @@
 .search-results-list .muted { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 
 .text-node { border-radius: inherit; }
-.text-view { padding: 14px; min-height: 150px; max-height: 420px; overflow-y: auto; line-height: 1.55; cursor: text; }
-.text-view:empty::before { content: 'Double-click to write…'; color: var(--muted); }
-.fmt-bar { display: flex; align-items: center; gap: 1px; padding: 5px 6px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.fmt-bar button { min-width: 24px; height: 24px; border-radius: 6px; font-size: 11.5px; color: var(--muted); display: grid; place-items: center; }
-.fmt-bar button:hover { background: var(--card-2); color: var(--text); }
-.fmt-bar .fmt-b { font-weight: 800; } .fmt-bar .fmt-i { font-style: italic; }
-.fmt-sep { width: 1px; height: 16px; background: var(--line-2); margin: 0 4px; }
-.full-editor .fmt-bar { border: 1px solid var(--line); border-radius: 10px; margin: 10px 0; }
-.full-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; height: 62vh; }
-.full-split textarea { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; resize: none; outline: none; line-height: 1.55; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
-.full-split .md { overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 
-.composer-prompt { position: relative; }
-.mention-pop.down { top: calc(100% - 4px); bottom: auto; left: 0; }
 .check { display: flex; align-items: center; gap: 8px; }

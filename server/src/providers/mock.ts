@@ -122,6 +122,27 @@ function wav(seconds: number, seed: number) {
   return buf
 }
 
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+const MOCK_NOTE = '*(mock writer: connect an LLM in Settings → Local LLM for real writing)*'
+
+/** Offline stand-in for the LLM writer: a small, deterministic markdown document. */
+export function mockDocument(ask: string, doc: string, refs: string[]) {
+  const topic = cap(ask.replace(/^(please\s+)?(write|generate|genrate|create|make|draft|give me)\s+(me\s+)?(an?\s+)?/i, '').replace(/[.?!]+$/, ''))
+  if (doc.trim()) return `${doc.trim()}\n\n## ${topic}\n\n- Revision following: *${ask}*\n\n${MOCK_NOTE}`
+  if (/script|video|ad\b|story|storyboard/i.test(ask)) {
+    const rows = [
+      ['Establishing wide shot that sets the mood', 'Every story starts somewhere.'],
+      ['Close-up on the subject, soft key light', 'This is where ours begins.'],
+      ['Detail insert showing the idea in action', 'Made with care, frame by frame.'],
+      ['Hero shot, slow dolly-in, title on screen', 'Now it is your turn.'],
+    ]
+    return `**Title:** ${topic}  \n**Duration:** 20 seconds\n\n| Time | Visual | Voiceover |\n| --- | --- | --- |\n`
+      + rows.map(([v, a], i) => `| 0:${String(i * 5).padStart(2, '0')}–0:${String(i * 5 + 5).padStart(2, '0')} | ${v} | ${a} |`).join('\n')
+      + (refs.length ? `\n\nBased on ${refs.length} connected note${refs.length > 1 ? 's' : ''}.` : '') + `\n\n${MOCK_NOTE}`
+  }
+  return `## ${topic}\n\n- A first idea about ${topic.toLowerCase()}\n- A second angle worth exploring\n- A concrete next step\n\n${MOCK_NOTE}`
+}
+
 const STYLES = ['cinematic lighting, shallow depth of field', 'soft volumetric haze, golden hour', 'high contrast, 35mm film grain', 'moody neon reflections, light rain']
 
 export const mock: Provider = {
@@ -133,7 +154,8 @@ export const mock: Provider = {
     if (model.tool) return { bytes: Buffer.from(toolSvg(model.tool, req.inputs.images[0], req.prompt, req.params.mask)), mime: 'image/svg+xml' }
     switch (model.kind) {
       case 'text': {
-        const base = prompt || 'a quiet city at dawn'
+        if (req.prompt.trim()) return { text: mockDocument(req.prompt.trim(), req.params.document ?? '', req.inputs.texts) }
+        const base = [...req.inputs.texts, req.params.document ?? ''].filter(Boolean).join(' ') || 'a quiet city at dawn'
         return { text: `${base.replace(/\.$/, '')}. ${STYLES[seed % STYLES.length]}, detailed textures, balanced composition, subtle camera movement.` }
       }
       case 'image':

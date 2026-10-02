@@ -38,7 +38,15 @@ const P: Record<string, string> = {
   key: 'M14 10a4 4 0 1 0-3.5 4L12 15.5V18h2.5v2.5H17l1-1-4.5-4.5A4 4 0 0 0 14 10zM9.5 9.5h.01',
   search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM16 16l4.5 4.5',
   nodes: 'M4 4h6v5H4zM14 15h6v5h-6zM14 4h6v5h-6zM10 6.5h4M17 9v6',
-  sliders: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4',
+  'list-ol': 'M10 6h11M10 12h11M10 18h11M4 4h1.5v4M4 8h3M4 14.5a1.5 1.5 0 0 1 3 .5c0 1-3 2-3 3h3',
+  'arrow-left': 'M19 12H5M11 6l-6 6 6 6',
+  'arrow-up': 'M12 19V5M6 11l6-6 6 6',
+  tag: 'M3 12V4h8l9 9-8 8zM7.5 7.5h.01',
+  'folder-plus': 'M3 6h6l2 2h10v11H3zM12 11v5M9.5 13.5h5',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
+  mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
+  camera: 'M3 7h4l2-3h6l2 3h4v13H3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  sliders:'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4',
 }
 
 export type IconName = keyof typeof P

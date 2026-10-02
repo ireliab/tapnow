@@ -23,7 +23,7 @@ export const Ctx = createContext<SettingsCtx>(null!)
 export const useSettings = () => useContext(Ctx)
 
 export const PROVIDER_META: Record<ProviderKey, { name: string; icon: IconName; blurb: string }> = {
-  llm: { name: 'Local LLM', icon: 'cpu', blurb: 'Powers the Agent and "Expand" on text nodes. Any OpenAI-compatible server: Ollama, LM Studio, vLLM or OpenAI itself.' },
+  llm: { name: 'Local LLM', icon: 'cpu', blurb: 'Powers the Agent and writing in text nodes. Any OpenAI-compatible server: Ollama, LM Studio, vLLM or OpenAI itself.' },
   comfyui: { name: 'ComfyUI', icon: 'nodes', blurb: 'Run image and video models on your own GPU (FLUX, SDXL, Wan, LTX-Video, HunyuanVideo…) through your ComfyUI workflows.' },
   fal: { name: 'fal.ai', icon: 'cloud', blurb: 'Hosted image, video and audio models — FLUX, Kling, Veo 3, Hailuo, Nano Banana, ElevenLabs and more. Billed per generation by fal.' },
   openai: { name: 'OpenAI', icon: 'sparkle', blurb: 'GPT Image for pictures and edits, plus OpenAI text-to-speech voices. Billed by OpenAI.' },

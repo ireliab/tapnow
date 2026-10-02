@@ -34,7 +34,7 @@ export function TopBar() {
 
 function ListeningBadge() {
   const on = useStore(s => s.listening)
-  return on ? <span className="listening"><i /> Listening — release V</span> : null
+  return on ? <span className="listening"><i /> Listening…</span> : null
 }
 
 const TOOLS: Array<{ kind: NodeKind; icon: IconName; key: string }> = [

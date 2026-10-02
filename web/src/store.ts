@@ -8,6 +8,8 @@ import type { AnyNode, Asset, ElementItem, CanvasEdge, CanvasNode, CanvasNodeDat
 const uid = () => Math.random().toString(36).slice(2, 10)
 
 export const NODE_WIDTH: Record<NodeKind, number> = { text: 280, image: 300, video: 360, audio: 280 }
+/** text nodes are fixed-size documents (resizable); media nodes size to their content */
+export const TEXT_HEIGHT = 240
 export const KIND_LABEL: Record<NodeKind, string> = { text: 'Text', image: 'Image', video: 'Video', audio: 'Audio' }
 
 export interface BatchNode { ref: string; kind: NodeKind; title?: string; prompt?: string; model?: string; params?: NodeParams }
@@ -97,6 +99,9 @@ interface Actions {
 
 /** Default model for a node that has image inputs: prefer one that accepts reference images / first frames. */
 // generation models only — editing tools (upscale, cutout, …) and lip-sync are never a node's default
+/** Drop markdown emphasis, code and heading markers (for image / video / audio prompts). */
+export const unmark = (s: string) => s.replace(/\*\*|__|`/g, '').replace(/^#{1,6}\s+/gm, '')
+
 /** model not switched off in Settings → Models */
 export const shown = (m: ModelInfo) => m.enabled !== false
 const plain = (m: ModelInfo, kind: NodeKind) => m.kind === kind && m.available && shown(m) && !m.tool && !m.needs?.length && (kind !== 'audio' || !m.audioMode || m.audioMode === 'speech')
@@ -243,7 +248,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const id = `${kind}-${uid()}`
     const count = get().nodes.filter(n => n.data.kind === kind).length + 1
     const node: CanvasNode = {
-      id, type: 'canvas', position, width: NODE_WIDTH[kind],
+      id, type: 'canvas', position, width: NODE_WIDTH[kind], ...(kind === 'text' ? { height: TEXT_HEIGHT } : {}),
       data: {
         kind, title: `${KIND_LABEL[kind]} ${count}`, prompt: '', model: defaultModel(models, kind),
         params: kind === 'video' ? { aspect: '16:9', duration: 5 } : kind === 'image' ? { aspect: '16:9' } : {},
@@ -291,17 +296,21 @@ export const useStore = create<State & Actions>((set, get) => ({
     if (!n || n.data.status === 'queued' || n.data.status === 'running') return
     const missing = missingUpstream(id, nodes, edges)
     if (missing.length) get().notify(`Upstream "${missing[0].data.title}" has no output yet — it will be ignored`, 'info')
-    const mentioned = expandMentions(n.data.prompt, upstreamOf(id, nodes, edges), resolveInputs(id, nodes, edges))
+    // text nodes: the composer instruction drives generation and the node's document is rewritten
+    const isText = n.data.kind === 'text'
+    const mentioned = expandMentions(isText ? n.data.ask ?? '' : n.data.prompt, upstreamOf(id, nodes, edges), resolveInputs(id, nodes, edges))
     const maxImages = get().models.find(m => m.id === n.data.model)?.maxImages ?? 0
-    const { prompt, inputs } = expandElements(mentioned.prompt, mentioned.inputs, get().elements, maxImages)
-    if (n.data.kind !== 'text' && !prompt.trim() && !inputs.texts.length && !inputs.images.length) {
-      get().notify('Write a prompt or connect an input first', 'error')
+    const expanded = expandElements(mentioned.prompt, mentioned.inputs, get().elements, maxImages)
+    // text nodes hold markdown; media models get it without bold / heading / code markers
+    const { prompt, inputs } = isText ? expanded : { prompt: unmark(expanded.prompt), inputs: { ...expanded.inputs, texts: expanded.inputs.texts.map(unmark) } }
+    if (isText ? !prompt.trim() && !n.data.prompt.trim() && !inputs.texts.length : !prompt.trim() && !inputs.texts.length && !inputs.images.length) {
+      get().notify(isText ? 'Describe what to write first' : 'Write a prompt or connect an input first', 'error')
       waiters.get(id)?.(false)
       return
     }
     get().updateData(id, { status: 'queued', progress: 0, error: undefined, message: undefined })
     try {
-      const job = await api.generate({ nodeId: id, projectId, kind: n.data.kind, model: n.data.model, prompt, params: n.data.params, inputs })
+      const job = await api.generate({ nodeId: id, projectId, kind: n.data.kind, model: n.data.model, prompt, params: isText ? { ...n.data.params, document: n.data.prompt } : n.data.params, inputs })
       // the WS "done" event can race the HTTP response — only record the job id if still pending
       const cur = get().nodes.find(x => x.id === id)
       if (cur && (cur.data.status === 'queued' || cur.data.status === 'running')) get().updateData(id, { jobId: job.id })
@@ -383,7 +392,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       counts[kind] = (counts[kind] ?? nodes.filter(n => n.data.kind === kind).length) + 1
       const model = sp.model && models.some(m => m.id === sp.model && m.kind === kind && m.available) ? sp.model : defaultModel(models, kind)
       return {
-        id, type: 'canvas', position: pos[sp.ref], width: NODE_WIDTH[kind],
+        id, type: 'canvas', position: pos[sp.ref], width: NODE_WIDTH[kind], ...(kind === 'text' ? { height: TEXT_HEIGHT } : {}),
         data: {
           kind, title: sp.title || `${KIND_LABEL[kind]} ${counts[kind]}`, prompt: sp.prompt ?? '', model,
           params: { ...(kind === 'video' ? { aspect: '16:9', duration: 5 } : kind === 'image' ? { aspect: '16:9' } : {}), ...sp.params },
